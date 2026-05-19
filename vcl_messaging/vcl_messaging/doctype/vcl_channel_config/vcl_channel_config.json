@@ -1,0 +1,203 @@
+{
+  "name": "VCL Channel Config",
+  "module": "VCL Messaging",
+  "doctype": "DocType",
+  "document_type": "Setup",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+    "channel_type",
+    "channel_name",
+    "enabled",
+    "section_whatsapp",
+    "whatsapp_phone_number_id",
+    "whatsapp_business_account_id",
+    "whatsapp_access_token",
+    "whatsapp_verify_token",
+    "section_whatsapp_group",
+    "pa_shared_token",
+    "pa_telegram_bot_token",
+    "pa_priority_telegram_chat_id",
+    "pa_anthropic_api_key",
+    "section_email",
+    "email_account",
+    "email_from_address",
+    "email_from_name",
+    "section_slack",
+    "slack_bot_token",
+    "slack_signing_secret",
+    "slack_default_channel",
+    "section_webhook",
+    "webhook_url"
+  ],
+  "fields": [
+    {
+      "fieldname": "channel_type",
+      "fieldtype": "Select",
+      "label": "Channel Type",
+      "options": "WhatsApp\nWhatsApp Group\nEmail\nSlack\nSMS",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "channel_name",
+      "fieldtype": "Data",
+      "label": "Channel Name",
+      "reqd": 1,
+      "unique": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "enabled",
+      "fieldtype": "Check",
+      "label": "Enabled",
+      "default": "1",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "section_whatsapp",
+      "fieldtype": "Section Break",
+      "label": "WhatsApp Configuration",
+      "depends_on": "eval:doc.channel_type=='WhatsApp'"
+    },
+    {
+      "fieldname": "whatsapp_phone_number_id",
+      "fieldtype": "Data",
+      "label": "Phone Number ID",
+      "description": "From Meta Business Suite > WhatsApp > API Setup",
+      "mandatory_depends_on": "eval:doc.channel_type=='WhatsApp'"
+    },
+    {
+      "fieldname": "whatsapp_business_account_id",
+      "fieldtype": "Data",
+      "label": "Business Account ID"
+    },
+    {
+      "fieldname": "whatsapp_access_token",
+      "fieldtype": "Password",
+      "label": "Access Token",
+      "description": "Permanent or temporary token from Meta Developer Portal",
+      "mandatory_depends_on": "eval:doc.channel_type=='WhatsApp'"
+    },
+    {
+      "fieldname": "whatsapp_verify_token",
+      "fieldtype": "Data",
+      "label": "Webhook Verify Token",
+      "description": "Custom string used to verify webhook subscription"
+    },
+    {
+      "fieldname": "section_whatsapp_group",
+      "fieldtype": "Section Break",
+      "label": "WhatsApp Group (Baileys PA) Configuration",
+      "depends_on": "eval:doc.channel_type=='WhatsApp Group'"
+    },
+    {
+      "fieldname": "pa_shared_token",
+      "fieldtype": "Password",
+      "label": "PA Shared Token",
+      "description": "Long random string. Must match PA_SHARED_TOKEN in vcl_whatsapp_pa .env. Listener sends it as X-PA-Token header.",
+      "mandatory_depends_on": "eval:doc.channel_type=='WhatsApp Group'"
+    },
+    {
+      "fieldname": "pa_telegram_bot_token",
+      "fieldtype": "Password",
+      "label": "Telegram Bot Token",
+      "description": "Token from @BotFather. Used to send alerts for inbound group messages."
+    },
+    {
+      "fieldname": "pa_priority_telegram_chat_id",
+      "fieldtype": "Data",
+      "label": "Priority Telegram Chat ID",
+      "description": "Telegram chat to ping for priority-classified group messages (orders, urgent queries)."
+    },
+    {
+      "fieldname": "pa_anthropic_api_key",
+      "fieldtype": "Password",
+      "label": "Anthropic API Key",
+      "description": "For Claude Haiku classification of inbound group messages."
+    },
+    {
+      "fieldname": "section_email",
+      "fieldtype": "Section Break",
+      "label": "Email Configuration",
+      "depends_on": "eval:doc.channel_type=='Email'"
+    },
+    {
+      "fieldname": "email_account",
+      "fieldtype": "Link",
+      "label": "Email Account",
+      "options": "Email Account",
+      "description": "Frappe Email Account for sending/receiving",
+      "mandatory_depends_on": "eval:doc.channel_type=='Email'"
+    },
+    {
+      "fieldname": "email_from_address",
+      "fieldtype": "Data",
+      "label": "From Address",
+      "options": "Email",
+      "description": "Override sender email address"
+    },
+    {
+      "fieldname": "email_from_name",
+      "fieldtype": "Data",
+      "label": "From Name",
+      "description": "Display name for outgoing emails (e.g., 'VCL Support')"
+    },
+    {
+      "fieldname": "section_slack",
+      "fieldtype": "Section Break",
+      "label": "Slack Configuration",
+      "depends_on": "eval:doc.channel_type=='Slack'"
+    },
+    {
+      "fieldname": "slack_bot_token",
+      "fieldtype": "Password",
+      "label": "Bot Token",
+      "description": "xoxb-... token from Slack App > OAuth & Permissions",
+      "mandatory_depends_on": "eval:doc.channel_type=='Slack'"
+    },
+    {
+      "fieldname": "slack_signing_secret",
+      "fieldtype": "Password",
+      "label": "Signing Secret",
+      "description": "From Slack App > Basic Information > App Credentials"
+    },
+    {
+      "fieldname": "slack_default_channel",
+      "fieldtype": "Data",
+      "label": "Default Channel",
+      "description": "Channel ID (e.g., C01234567) for notifications"
+    },
+    {
+      "fieldname": "section_webhook",
+      "fieldtype": "Section Break",
+      "label": "Webhook Info"
+    },
+    {
+      "fieldname": "webhook_url",
+      "fieldtype": "Data",
+      "label": "Webhook URL",
+      "read_only": 1,
+      "description": "Configure this URL in the provider's settings"
+    }
+  ],
+  "index_web_pages_for_search": 0,
+  "is_single": 0,
+  "istable": 0,
+  "modified": "2026-05-01 00:00:00.000000",
+  "naming_rule": "By fieldname",
+  "autoname": "field:channel_name",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "role": "System Manager",
+      "read": 1,
+      "write": 1,
+      "create": 1,
+      "delete": 1
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "track_changes": 1
+}

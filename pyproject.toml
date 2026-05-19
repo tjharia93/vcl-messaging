@@ -1,0 +1,19 @@
+[build-system]
+requires = ["flit_core >=3.4,<4"]
+build-backend = "flit_core:buildapi"
+
+[project]
+name = "vcl_messaging"
+authors = [
+    {name = "Vimit Converters Limited", email = "tanuj.haria@vimit.com"}
+]
+description = "Unified inbox for VCL — WhatsApp (Cloud API + Baileys PA), Email, and Slack — ingest, route, and alert."
+requires-python = ">=3.10"
+readme = "README.md"
+dynamic = ["version"]
+dependencies = [
+    "requests",
+]
+
+[tool.flit.module]
+name = "vcl_messaging"

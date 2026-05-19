@@ -1,0 +1,8 @@
+include README.md
+include license.txt
+recursive-include vcl_messaging *.json
+recursive-include vcl_messaging *.py
+recursive-include vcl_messaging *.txt
+recursive-include vcl_messaging *.html
+recursive-include vcl_messaging *.js
+recursive-include vcl_messaging *.css

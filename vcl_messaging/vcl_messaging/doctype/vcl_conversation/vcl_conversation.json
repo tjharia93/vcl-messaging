@@ -1,0 +1,196 @@
+{
+  "name": "VCL Conversation",
+  "module": "VCL Messaging",
+  "doctype": "DocType",
+  "document_type": "Document",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+    "contact",
+    "channel",
+    "channel_config",
+    "status",
+    "column_break_1",
+    "assigned_to",
+    "last_message_at",
+    "unread_count",
+    "section_channel_meta",
+    "whatsapp_group_id",
+    "whatsapp_group_name",
+    "slack_channel_id",
+    "slack_thread_ts",
+    "email_thread_id",
+    "email_subject",
+    "section_context",
+    "linked_customer",
+    "linked_lead",
+    "linked_opportunity",
+    "section_last_message",
+    "last_message_preview"
+  ],
+  "fields": [
+    {
+      "fieldname": "contact",
+      "fieldtype": "Link",
+      "label": "Contact",
+      "options": "VCL Message Contact",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "channel",
+      "fieldtype": "Select",
+      "label": "Channel",
+      "options": "WhatsApp\nWhatsApp Group\nEmail\nSlack\nSMS",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "channel_config",
+      "fieldtype": "Link",
+      "label": "Channel Config",
+      "options": "VCL Channel Config"
+    },
+    {
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "label": "Status",
+      "options": "Open\nPending\nResolved\nClosed",
+      "default": "Open",
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "assigned_to",
+      "fieldtype": "Link",
+      "label": "Assigned To",
+      "options": "User",
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "last_message_at",
+      "fieldtype": "Datetime",
+      "label": "Last Message At",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "unread_count",
+      "fieldtype": "Int",
+      "label": "Unread Count",
+      "default": "0"
+    },
+    {
+      "fieldname": "section_channel_meta",
+      "fieldtype": "Section Break",
+      "label": "Channel Metadata",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "whatsapp_group_id",
+      "fieldtype": "Data",
+      "label": "WhatsApp Group JID",
+      "depends_on": "eval:doc.channel=='WhatsApp Group'",
+      "description": "Baileys group JID (e.g. 1234567890@g.us)",
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "whatsapp_group_name",
+      "fieldtype": "Data",
+      "label": "WhatsApp Group Name",
+      "depends_on": "eval:doc.channel=='WhatsApp Group'",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "slack_channel_id",
+      "fieldtype": "Data",
+      "label": "Slack Channel ID",
+      "depends_on": "eval:doc.channel=='Slack'",
+      "description": "Slack channel or DM ID"
+    },
+    {
+      "fieldname": "slack_thread_ts",
+      "fieldtype": "Data",
+      "label": "Slack Thread TS",
+      "depends_on": "eval:doc.channel=='Slack'",
+      "description": "Thread timestamp for threaded replies"
+    },
+    {
+      "fieldname": "email_thread_id",
+      "fieldtype": "Data",
+      "label": "Email Thread ID",
+      "depends_on": "eval:doc.channel=='Email'",
+      "description": "Message-ID or In-Reply-To header for threading"
+    },
+    {
+      "fieldname": "email_subject",
+      "fieldtype": "Data",
+      "label": "Email Subject",
+      "depends_on": "eval:doc.channel=='Email'"
+    },
+    {
+      "fieldname": "section_context",
+      "fieldtype": "Section Break",
+      "label": "Linked Records"
+    },
+    {
+      "fieldname": "linked_customer",
+      "fieldtype": "Link",
+      "label": "Customer",
+      "options": "Customer"
+    },
+    {
+      "fieldname": "linked_lead",
+      "fieldtype": "Link",
+      "label": "Lead",
+      "options": "Lead"
+    },
+    {
+      "fieldname": "linked_opportunity",
+      "fieldtype": "Link",
+      "label": "Opportunity",
+      "options": "Opportunity"
+    },
+    {
+      "fieldname": "section_last_message",
+      "fieldtype": "Section Break",
+      "label": "Preview"
+    },
+    {
+      "fieldname": "last_message_preview",
+      "fieldtype": "Small Text",
+      "label": "Last Message",
+      "read_only": 1
+    }
+  ],
+  "index_web_pages_for_search": 0,
+  "is_single": 0,
+  "istable": 0,
+  "modified": "2026-05-01 00:00:00.000000",
+  "naming_rule": "Expression",
+  "autoname": "CONV-.#####",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "role": "System Manager",
+      "read": 1,
+      "write": 1,
+      "create": 1,
+      "delete": 1
+    },
+    {
+      "role": "Sales User",
+      "read": 1,
+      "write": 1,
+      "create": 1
+    }
+  ],
+  "sort_field": "last_message_at",
+  "sort_order": "DESC",
+  "track_changes": 1
+}

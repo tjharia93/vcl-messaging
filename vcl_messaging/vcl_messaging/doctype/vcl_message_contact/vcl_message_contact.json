@@ -1,0 +1,114 @@
+{
+  "name": "VCL Message Contact",
+  "module": "VCL Messaging",
+  "doctype": "DocType",
+  "document_type": "Document",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+    "contact_name",
+    "phone",
+    "email",
+    "column_break_1",
+    "whatsapp_id",
+    "slack_user_id",
+    "linked_customer",
+    "linked_lead",
+    "section_profile",
+    "profile_picture",
+    "notes"
+  ],
+  "fields": [
+    {
+      "fieldname": "contact_name",
+      "fieldtype": "Data",
+      "label": "Contact Name",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "phone",
+      "fieldtype": "Data",
+      "label": "Phone",
+      "options": "Phone",
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "email",
+      "fieldtype": "Data",
+      "label": "Email",
+      "options": "Email",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "whatsapp_id",
+      "fieldtype": "Data",
+      "label": "WhatsApp ID",
+      "description": "WhatsApp user ID (wa_id) from Meta API"
+    },
+    {
+      "fieldname": "slack_user_id",
+      "fieldtype": "Data",
+      "label": "Slack User ID",
+      "description": "Slack user ID (U...) from Slack API"
+    },
+    {
+      "fieldname": "linked_customer",
+      "fieldtype": "Link",
+      "label": "Linked Customer",
+      "options": "Customer"
+    },
+    {
+      "fieldname": "linked_lead",
+      "fieldtype": "Link",
+      "label": "Linked Lead",
+      "options": "Lead"
+    },
+    {
+      "fieldname": "section_profile",
+      "fieldtype": "Section Break",
+      "label": "Profile"
+    },
+    {
+      "fieldname": "profile_picture",
+      "fieldtype": "Attach Image",
+      "label": "Profile Picture"
+    },
+    {
+      "fieldname": "notes",
+      "fieldtype": "Text",
+      "label": "Notes"
+    }
+  ],
+  "index_web_pages_for_search": 0,
+  "is_single": 0,
+  "istable": 0,
+  "modified": "2026-05-01 00:00:00.000000",
+  "naming_rule": "Expression",
+  "autoname": "MSG-CONTACT-.#####",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "role": "System Manager",
+      "read": 1,
+      "write": 1,
+      "create": 1,
+      "delete": 1
+    },
+    {
+      "role": "Sales User",
+      "read": 1,
+      "write": 1,
+      "create": 1
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "track_changes": 1
+}

@@ -1,0 +1,148 @@
+{
+  "name": "VCL Message",
+  "module": "VCL Messaging",
+  "doctype": "DocType",
+  "document_type": "Document",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+    "conversation",
+    "direction",
+    "message_type",
+    "status",
+    "column_break_1",
+    "sent_at",
+    "delivered_at",
+    "read_at",
+    "section_content",
+    "content",
+    "media_url",
+    "media_mime_type",
+    "section_meta",
+    "external_id",
+    "sender_name",
+    "error_message"
+  ],
+  "fields": [
+    {
+      "fieldname": "conversation",
+      "fieldtype": "Link",
+      "label": "Conversation",
+      "options": "VCL Conversation",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "direction",
+      "fieldtype": "Select",
+      "label": "Direction",
+      "options": "Inbound\nOutbound",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "message_type",
+      "fieldtype": "Select",
+      "label": "Message Type",
+      "options": "text\nimage\nvideo\naudio\ndocument\nlocation\ncontacts\ntemplate\ninteractive",
+      "default": "text",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "label": "Status",
+      "options": "pending\nsent\ndelivered\nread\nfailed",
+      "default": "pending",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "sent_at",
+      "fieldtype": "Datetime",
+      "label": "Sent At"
+    },
+    {
+      "fieldname": "delivered_at",
+      "fieldtype": "Datetime",
+      "label": "Delivered At"
+    },
+    {
+      "fieldname": "read_at",
+      "fieldtype": "Datetime",
+      "label": "Read At"
+    },
+    {
+      "fieldname": "section_content",
+      "fieldtype": "Section Break",
+      "label": "Content"
+    },
+    {
+      "fieldname": "content",
+      "fieldtype": "Long Text",
+      "label": "Content",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "media_url",
+      "fieldtype": "Data",
+      "label": "Media URL"
+    },
+    {
+      "fieldname": "media_mime_type",
+      "fieldtype": "Data",
+      "label": "Media MIME Type"
+    },
+    {
+      "fieldname": "section_meta",
+      "fieldtype": "Section Break",
+      "label": "Metadata"
+    },
+    {
+      "fieldname": "external_id",
+      "fieldtype": "Data",
+      "label": "External Message ID",
+      "description": "Message ID from WhatsApp/provider",
+      "unique": 1
+    },
+    {
+      "fieldname": "sender_name",
+      "fieldtype": "Data",
+      "label": "Sender Name"
+    },
+    {
+      "fieldname": "error_message",
+      "fieldtype": "Small Text",
+      "label": "Error Message"
+    }
+  ],
+  "index_web_pages_for_search": 0,
+  "is_single": 0,
+  "istable": 0,
+  "modified": "2026-05-01 00:00:00.000000",
+  "naming_rule": "Expression",
+  "autoname": "MSG-.#####",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "role": "System Manager",
+      "read": 1,
+      "write": 1,
+      "create": 1,
+      "delete": 1
+    },
+    {
+      "role": "Sales User",
+      "read": 1,
+      "write": 1,
+      "create": 1
+    }
+  ],
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "track_changes": 1
+}
