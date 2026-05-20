@@ -121,6 +121,17 @@ def _validate_token(token):
     return None
 
 
+def _first_pa_config():
+    """Name of the first enabled WhatsApp Group channel config, or None."""
+    rows = frappe.get_all(
+        "VCL Channel Config",
+        filters={"channel_type": "WhatsApp Group", "enabled": 1},
+        fields=["name"],
+        limit=1,
+    )
+    return rows[0]["name"] if rows else None
+
+
 # ---------------------------------------------------------------------------
 # Ingest
 # ---------------------------------------------------------------------------
@@ -392,6 +403,47 @@ def record_media():
     )
 
 
+@frappe.whitelist()
+def backfill_classification(limit=300):
+    """Re-run classification over every VCL Message not yet processed
+    (ai_processed_at is null). Text -> _classify_text, media -> _classify_media.
+
+    Idempotent: already-classified rows are skipped. Use this after deploying
+    the classifier so messages ingested earlier get caught up. Auth: requires
+    a logged-in user (System Manager via API key)."""
+    config_name = _first_pa_config()
+    if not config_name:
+        return {"ok": False, "error": "no enabled WhatsApp Group channel config"}
+
+    rows = frappe.get_all(
+        "VCL Message",
+        filters={"ai_processed_at": ["is", "not set"]},
+        fields=["name", "message_type", "content", "media_url"],
+        order_by="creation asc",
+        limit=int(limit),
+    )
+    queued_text = queued_media = skipped = 0
+    for r in rows:
+        mt = (r.message_type or "text").lower()
+        if mt == "text" and (r.content or "").strip():
+            frappe.enqueue(
+                "vcl_messaging.vcl_messaging.whatsapp_pa_api._classify_text",
+                queue="long", timeout=120,
+                message_name=r.name, config_name=config_name)
+            queued_text += 1
+        elif mt in MEDIA_BEARING_TYPES and r.media_url:
+            frappe.enqueue(
+                "vcl_messaging.vcl_messaging.whatsapp_pa_api._classify_media",
+                queue="long", timeout=120,
+                message_name=r.name, config_name=config_name)
+            queued_media += 1
+        else:
+            skipped += 1
+    return {"ok": True, "scanned": len(rows),
+            "queued_text": queued_text, "queued_media": queued_media,
+            "skipped": skipped}
+
+
 def _default_filename(external_id, mime):
     ext = {
         "image/jpeg": ".jpg",
@@ -448,16 +500,19 @@ def _classify_media(message_name, config_name):
 
 
 def _ask_claude_vision(b64, mime, group_name, sender_name, api_key):
-    """Returns (summary, kind). On failure returns (None, 'other')."""
-    if mime not in {"image/jpeg", "image/png", "image/gif", "image/webp"}:
-        # Vision only supports images today — videos/audio/PDFs go elsewhere.
+    """Returns (summary, kind). Handles images and PDFs. On failure (None, 'other')."""
+    image_mimes = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+    is_pdf = mime == "application/pdf"
+    if mime not in image_mimes and not is_pdf:
+        # Audio / video go elsewhere — not auto-readable here.
         return (f"[{mime} attachment; not auto-readable]", "other")
 
+    noun = "PDF document" if is_pdf else "image"
     prompt = (
         f"You are watching the VCL WhatsApp group \"{group_name}\".\n"
-        f"\"{sender_name}\" just sent this image.\n\n"
+        f"\"{sender_name}\" just sent this {noun}.\n\n"
         f"In ONE sentence (max 220 chars), describe what is visible — be concrete "
-        f"(numbers, names, what kind of document/object). Then classify the image "
+        f"(numbers, names, what kind of document/object). Then classify the {noun} "
         f"as exactly ONE of:\n"
         f"  pi              — proforma invoice\n"
         f"  ci              — commercial invoice\n"
@@ -476,15 +531,18 @@ def _ask_claude_vision(b64, mime, group_name, sender_name, api_key):
         "anthropic-version": "2023-06-01",
         "content-type": "application/json",
     }
+    if is_pdf:
+        media_block = {"type": "document",
+                       "source": {"type": "base64", "media_type": "application/pdf", "data": b64}}
+    else:
+        media_block = {"type": "image",
+                       "source": {"type": "base64", "media_type": mime, "data": b64}}
     body = {
         "model": ANTHROPIC_VISION_MODEL,
         "max_tokens": 400,
         "messages": [{
             "role": "user",
-            "content": [
-                {"type": "image", "source": {"type": "base64", "media_type": mime, "data": b64}},
-                {"type": "text", "text": prompt},
-            ],
+            "content": [media_block, {"type": "text", "text": prompt}],
         }],
     }
 
