@@ -20,10 +20,12 @@ import json
 import re
 
 import frappe
+import frappe.utils.password  # submodule is not auto-loaded in RQ background jobs
 import requests
 from frappe import _
 from frappe.utils import now_datetime
 from frappe.utils.file_manager import save_file
+from frappe.utils.password import get_decrypted_password
 from werkzeug.wrappers import Response
 
 TELEGRAM_API = "https://api.telegram.org"
@@ -103,7 +105,7 @@ def _validate_token(token):
         fields=["name"],
     )
     for cfg in configs:
-        stored = frappe.utils.password.get_decrypted_password(
+        stored = get_decrypted_password(
             "VCL Channel Config", cfg.name, "pa_shared_token", raise_exception=False
         )
         if stored and stored == token:
@@ -263,7 +265,7 @@ def _send_telegram_alert(payload, conv_name, msg_name, config):
     if not chat_id:
         return {"sent": False, "reason": "no_chat_id"}
 
-    bot_token = frappe.utils.password.get_decrypted_password(
+    bot_token = get_decrypted_password(
         "VCL Channel Config", config.name, "pa_telegram_bot_token", raise_exception=False
     )
     if not bot_token:
@@ -390,7 +392,7 @@ def _classify_media(message_name, config_name):
     if not msg.media_url:
         return
 
-    api_key = frappe.utils.password.get_decrypted_password(
+    api_key = get_decrypted_password(
         "VCL Channel Config", config_name, "pa_anthropic_api_key", raise_exception=False
     )
     if not api_key:
@@ -504,7 +506,7 @@ def _send_vision_alert(msg, conv, summary, kind, config):
     chat_id = config.get("pa_priority_telegram_chat_id")
     if not chat_id:
         return
-    bot_token = frappe.utils.password.get_decrypted_password(
+    bot_token = get_decrypted_password(
         "VCL Channel Config", config.name, "pa_telegram_bot_token", raise_exception=False
     )
     if not bot_token:
