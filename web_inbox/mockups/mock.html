@@ -1,0 +1,152 @@
+<div class="ix-app">
+  <header class="ix-top">
+    <div class="ix-brand">VCL<span class="ix-brand-lo">INBOX</span></div>
+    <div class="ix-opt-badge"></div>
+    <div class="ix-stats">
+      <span class="ix-stat"><b>28</b><i>messages</i></span>
+      <span class="ix-stat"><b>3</b><i>payments</i></span>
+      <span class="ix-stat ix-warn"><b>5</b><i>need attention</i></span>
+      <span class="ix-stat ix-miss"><b>1</b><i>unmatched</i></span>
+    </div>
+  </header>
+
+  <div class="ix-main">
+    <!-- ===== LEFT: conversation rail ===== -->
+    <aside class="ix-rail">
+      <div class="ix-search"><input placeholder="Search conversations" disabled></div>
+      <div class="ix-tabs">
+        <button class="ix-tab on" data-filter="all">All</button>
+        <button class="ix-tab" data-filter="pay">Payments</button>
+        <button class="ix-tab" data-filter="high">High</button>
+      </div>
+      <div class="ix-convs">
+        <button class="ix-conv on" data-conv="c1" data-tags="all pay high">
+          <span class="ix-conv-dot p-HIGH"></span>
+          <span class="ix-conv-body">
+            <span class="ix-conv-top"><span class="ix-conv-name">VCL Accounts</span><span class="ix-conv-time">15:50</span></span>
+            <span class="ix-conv-prev">Jeetu — RTGS KES 1,240,000 to Korab International, slip pending</span>
+            <span class="ix-conv-meta"><span class="ix-wa">WhatsApp</span><span class="ix-conv-pay">3 payments</span></span>
+          </span>
+          <span class="ix-conv-badge">5</span>
+        </button>
+        <button class="ix-conv" data-conv="c3" data-tags="all high">
+          <span class="ix-conv-dot p-HIGH"></span>
+          <span class="ix-conv-body">
+            <span class="ix-conv-top"><span class="ix-conv-name">VCL · Sales Management</span><span class="ix-conv-time">15:53</span></span>
+            <span class="ix-conv-prev">vimal — Smart Printer FBB order, 3 reels, start sheeting tomorrow</span>
+            <span class="ix-conv-meta"><span class="ix-wa">WhatsApp</span></span>
+          </span>
+          <span class="ix-conv-badge">2</span>
+        </button>
+        <button class="ix-conv" data-conv="c2" data-tags="all">
+          <span class="ix-conv-dot p-MED"></span>
+          <span class="ix-conv-body">
+            <span class="ix-conv-top"><span class="ix-conv-name">Cartons</span><span class="ix-conv-time">09:48</span></span>
+            <span class="ix-conv-prev">vimal — Mombasa material to be use please</span>
+            <span class="ix-conv-meta"><span class="ix-wa">WhatsApp</span></span>
+          </span>
+          <span class="ix-conv-badge">2</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- ===== CENTRE: thread ===== -->
+    <section class="ix-thread">
+      <!-- c1 VCL Accounts -->
+      <div class="ix-pane" data-conv="c1">
+        <header class="ix-thread-hd">
+          <div><span class="ix-th-name">VCL Accounts</span>
+            <span class="ix-th-sub">WhatsApp group · 5 messages · 3 payments</span></div>
+        </header>
+        <div class="ix-msgs">
+          <article class="ix-msg on" data-msg="m1">
+            <div class="ix-msg-meta"><span class="ix-from">Raheel</span><span class="ix-time">15:48</span></div>
+            <div class="ix-bubble">Goshrani Printers have cleared cheque no 004521 for KES 250,000 against invoice INV-2026-0312. Banked today.</div>
+            <div class="ix-ai"><span class="ix-pri p-HIGH">HIGH</span><span class="ix-cat c-payment">payment</span><span class="ix-ai-sum">Cheque 004521 · KES 250,000 · Goshrani Printers</span></div>
+          </article>
+          <article class="ix-msg" data-msg="m2">
+            <div class="ix-msg-meta"><span class="ix-from">Neema</span><span class="ix-time">15:49</span></div>
+            <div class="ix-bubble">Received Mpesa confirmation SGH4TR8K9P Ksh 18,500 from East Africa Cable Ltd for the bond paper.</div>
+            <div class="ix-ai"><span class="ix-pri p-HIGH">HIGH</span><span class="ix-cat c-payment">payment</span><span class="ix-ai-sum">M-Pesa SGH4TR8K9P · KES 18,500 · East Africa Cable</span></div>
+          </article>
+          <article class="ix-msg" data-msg="m3">
+            <div class="ix-msg-meta"><span class="ix-from">Jeetu</span><span class="ix-time">15:50</span></div>
+            <div class="ix-bubble">RTGS done - KES 1,240,000 paid to Korab International for the newsprint shipment, slip to follow.</div>
+            <div class="ix-ai"><span class="ix-pri p-HIGH">HIGH</span><span class="ix-cat c-payment">payment</span><span class="ix-ai-sum">RTGS · KES 1,240,000 · Korab International</span></div>
+          </article>
+          <article class="ix-msg" data-msg="m4">
+            <div class="ix-msg-meta"><span class="ix-from">Simon</span><span class="ix-time">15:51</span></div>
+            <div class="ix-bubble">Good morning team, have a productive day ahead</div>
+            <div class="ix-ai"><span class="ix-pri p-LOW">LOW</span><span class="ix-cat c-personal">personal</span><span class="ix-ai-sum">Morning greeting — no action</span></div>
+          </article>
+          <article class="ix-msg" data-msg="m5">
+            <div class="ix-msg-meta"><span class="ix-from">Vimal</span><span class="ix-time">15:52</span></div>
+            <div class="ix-bubble">Confirmed order from Malindi Books - 20 cartons computer paper 2-part payslip W/Y, deliver next week</div>
+            <div class="ix-ai"><span class="ix-pri p-HIGH">HIGH</span><span class="ix-cat c-order">order</span><span class="ix-ai-sum">Order · Malindi Books · 20 cartons 2-part payslip</span></div>
+          </article>
+        </div>
+        <footer class="ix-composer">
+          <input class="ix-compose-in" placeholder="Reply to VCL Accounts" disabled>
+          <button class="ix-send" disabled>Send</button>
+          <span class="ix-compose-note">Reply path ships next</span>
+        </footer>
+      </div>
+
+      <!-- c3 Sales Management -->
+      <div class="ix-pane" data-conv="c3" hidden>
+        <header class="ix-thread-hd">
+          <div><span class="ix-th-name">VCL · Sales Management</span>
+            <span class="ix-th-sub">WhatsApp group · 2 messages</span></div>
+        </header>
+        <div class="ix-msgs">
+          <article class="ix-msg on" data-msg="m8">
+            <div class="ix-msg-meta"><span class="ix-from">vimal</span><span class="ix-time">10:19</span></div>
+            <div class="ix-bubble">18-5-2026 — Open inquiry, follow-up and lost. Raheel: Nation Media line-flow quote; East Africa Cable awaiting LPO. Keenda: J&amp;B chipboard 300gsm quoted… (weekly pipeline post, 30 inquiries)</div>
+            <div class="ix-ai"><span class="ix-pri p-MED">MED</span><span class="ix-cat c-sales">sales status</span><span class="ix-ai-sum">Weekly pipeline — 30 inquiries across 9 reps</span></div>
+          </article>
+          <article class="ix-msg" data-msg="m9">
+            <div class="ix-msg-meta"><span class="ix-from">vimal</span><span class="ix-time">15:53</span></div>
+            <div class="ix-bubble">Smart printer FBB sheeting 82cm reel to 82x54cm, 3 whole reels, 138+vat per kg. LPO PO-VIMIT-2026-3529. Start sheeting tomorrow.</div>
+            <div class="ix-ai"><span class="ix-pri p-HIGH">HIGH</span><span class="ix-cat c-order">order</span><span class="ix-ai-sum">Live order — Smart Printer FBB, 3 reels, LPO attached</span></div>
+          </article>
+        </div>
+        <footer class="ix-composer">
+          <input class="ix-compose-in" placeholder="Reply to VCL · Sales Management" disabled>
+          <button class="ix-send" disabled>Send</button>
+          <span class="ix-compose-note">Reply path ships next</span>
+        </footer>
+      </div>
+
+      <!-- c2 Cartons -->
+      <div class="ix-pane" data-conv="c2" hidden>
+        <header class="ix-thread-hd">
+          <div><span class="ix-th-name">Cartons</span>
+            <span class="ix-th-sub">WhatsApp group · 2 messages</span></div>
+        </header>
+        <div class="ix-msgs">
+          <article class="ix-msg on" data-msg="m6">
+            <div class="ix-msg-meta"><span class="ix-from">Nyaata Keenda</span><span class="ix-time">09:48</span></div>
+            <div class="ix-bubble ix-bubble-img"><span class="ix-imgtag">IMAGE</span> label artwork</div>
+            <div class="ix-ai"><span class="ix-pri p-MED">MED</span><span class="ix-cat c-image">label_artwork</span><span class="ix-ai-sum">Avery Dennison label roll · 80gsm · 100mm · qty 5</span></div>
+          </article>
+          <article class="ix-msg" data-msg="m7">
+            <div class="ix-msg-meta"><span class="ix-from">vimal</span><span class="ix-time">09:48</span></div>
+            <div class="ix-bubble">Mombasa material to be use please, thanks</div>
+            <div class="ix-ai"><span class="ix-pri p-MED">MED</span><span class="ix-cat c-job">job update</span><span class="ix-ai-sum">Use Mombasa kraft for the next carton job</span></div>
+          </article>
+        </div>
+        <footer class="ix-composer">
+          <input class="ix-compose-in" placeholder="Reply to Cartons" disabled>
+          <button class="ix-send" disabled>Send</button>
+          <span class="ix-compose-note">Reply path ships next</span>
+        </footer>
+      </div>
+    </section>
+
+    <!-- ===== RIGHT: context ===== -->
+    <aside class="ix-ctx">
+      <div class="ix-ctx-head">Message intelligence</div>
+      <div id="ix-ctx-body"></div>
+    </aside>
+  </div>
+</div>
