@@ -31,7 +31,15 @@ from werkzeug.wrappers import Response
 TELEGRAM_API = "https://api.telegram.org"
 ANTHROPIC_API = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VISION_MODEL = "claude-haiku-4-5-20251001"
+ANTHROPIC_TEXT_MODEL = "claude-haiku-4-5-20251001"
 MEDIA_BEARING_TYPES = {"image", "video", "document", "audio"}
+
+# Tier 1 text classifier — valid category values
+TEXT_CATEGORIES = [
+    "payment", "order", "inquiry", "sales_status_update", "supplier_update",
+    "complaint", "job_update", "ops_chatter", "personal", "other",
+]
+TEXT_PRIORITIES = ["LOW", "MED", "HIGH", "CRIT"]
 
 
 # ---------------------------------------------------------------------------
@@ -159,7 +167,20 @@ def _ingest(payload, config):
     })
     frappe.db.commit()
 
-    alert = _send_telegram_alert(payload, conv_name, msg.name, config)
+    # Text -> Tier 1 classifier in the background; it fires its own alert.
+    # Media -> _classify_media (triggered later by record_media).
+    # Anything else (location/contacts) -> immediate flat alert.
+    if msg_type == "text" and (body or "").strip():
+        frappe.enqueue(
+            "vcl_messaging.vcl_messaging.whatsapp_pa_api._classify_text",
+            queue="short",
+            timeout=120,
+            message_name=msg.name,
+            config_name=config.name,
+        )
+        alert = {"sent": False, "reason": "deferred_for_classification"}
+    else:
+        alert = _send_telegram_alert(payload, conv_name, msg.name, config)
 
     return {
         "ok": True,
@@ -532,6 +553,230 @@ def _send_vision_alert(msg, conv, summary, kind, config):
         )
     except Exception as e:
         frappe.log_error(title="WhatsApp PA: vision Telegram alert failed", message=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Tier 1 — text classifier (Claude Haiku)
+# ---------------------------------------------------------------------------
+
+def _classify_text(message_name, config_name):
+    """Background job. Tier 1 classifier: asks Claude Haiku to score one
+    inbound text message (priority, category, summary, customer mentions,
+    action items, mentions_tanuj), writes the verdict onto the VCL Message,
+    and fires a priority-gated Telegram alert.
+
+    Fails open: if there is no Anthropic key or Claude errors, a flat
+    fallback alert is sent so no message is silently lost."""
+    msg = frappe.get_doc("VCL Message", message_name)
+    if msg.message_type != "text" or not (msg.content or "").strip():
+        return
+
+    conv = frappe.get_doc("VCL Conversation", msg.conversation)
+    config = frappe.get_doc("VCL Channel Config", config_name)
+
+    api_key = get_decrypted_password(
+        "VCL Channel Config", config_name, "pa_anthropic_api_key", raise_exception=False
+    )
+    if not api_key:
+        frappe.log_error(
+            title="WhatsApp PA: no Anthropic key",
+            message=f"Channel {config_name} has no pa_anthropic_api_key; skipping Tier 1.",
+        )
+        _send_text_alert(msg, conv, None, config)
+        return
+
+    group_name = conv.whatsapp_group_name or "(unknown group)"
+    context = _recent_context(msg)
+    verdict = _ask_claude_text(msg.content, group_name, msg.sender_name, context, api_key)
+
+    if verdict is None:
+        _send_text_alert(msg, conv, None, config)
+        return
+
+    frappe.db.set_value("VCL Message", message_name, {
+        "ai_priority": verdict["priority"],
+        "ai_category": verdict["category"],
+        "ai_summary": (verdict.get("summary") or "")[:500],
+        "ai_customer_mentions": json.dumps(verdict.get("customer_mentions", []))[:500],
+        "ai_action_items": json.dumps(verdict.get("action_items", []))[:1000],
+        "ai_mentions_tanuj": 1 if verdict.get("mentions_tanuj") else 0,
+        "ai_processed_at": now_datetime(),
+    })
+    frappe.db.commit()
+
+    _send_text_alert(msg, conv, verdict, config)
+
+
+def _recent_context(msg, n=3):
+    """Last n messages in the same conversation before this one — gives Claude
+    a little thread context. Returns a plain string block."""
+    rows = frappe.get_all(
+        "VCL Message",
+        filters={"conversation": msg.conversation, "creation": ["<", msg.creation]},
+        fields=["sender_name", "message_type", "content"],
+        order_by="creation desc",
+        limit=n,
+    )
+    rows.reverse()
+    lines = []
+    for r in rows:
+        snippet = (r.content or f"[{r.message_type}]")[:160]
+        lines.append(f"{r.sender_name}: {snippet}")
+    return "\n".join(lines) or "(no earlier messages)"
+
+
+def _ask_claude_text(body, group_name, sender_name, context, api_key):
+    """Tier 1 Claude call. Returns the verdict dict, or None on failure."""
+    prompt = (
+        "You are the message classifier for VCL (Vimit Converters Limited), a "
+        "Kenyan paper-converting company. You are reading one inbound WhatsApp "
+        f"message from the group \"{group_name}\".\n\n"
+        f"Sender: {sender_name}\n"
+        "Recent context (older messages in this group, reference only):\n"
+        f"{context}\n\n"
+        "THE MESSAGE TO CLASSIFY:\n"
+        f"{body}\n\n"
+        "Classify it. Return STRICTLY a JSON object and nothing else:\n"
+        "{\n"
+        '  "priority": "LOW" | "MED" | "HIGH" | "CRIT",\n'
+        '  "category": one of [payment, order, inquiry, sales_status_update, '
+        "supplier_update, complaint, job_update, ops_chatter, personal, other],\n"
+        '  "summary": "one factual sentence, max 200 chars, concrete numbers/names",\n'
+        '  "customer_mentions": ["company names referenced"],\n'
+        '  "action_items": ["concrete next actions implied, if any"],\n'
+        '  "mentions_tanuj": true | false\n'
+        "}\n\n"
+        "Category guidance:\n"
+        "- payment: ANY money movement or settlement — cheque numbers, M-Pesa "
+        "codes, RTGS/EFT, bank deposits, 'paid', 'cleared', 'deposited', amounts "
+        "settled against an invoice or LPO. If money has moved, choose payment.\n"
+        "- order: a customer placing/confirming an order, an LPO, quantities to "
+        "produce.\n"
+        "- inquiry: a customer or rep asking for a price / quote / sample.\n"
+        "- sales_status_update: pipeline / follow-up posts (open / lost inquiries).\n"
+        "- supplier_update: a supplier message — deliveries, samples, proforma, "
+        "pricing.\n"
+        "- complaint: quality issue, dispute, dissatisfaction.\n"
+        "- job_update: production-floor / job-card progress.\n"
+        "- ops_chatter: logistics & internal coordination, no money or order.\n"
+        "- personal: greetings, personal notes, attendance.\n"
+        "- other: anything else.\n\n"
+        "For category 'payment', the summary MUST state, where present: the "
+        "amount with currency, the instrument (cheque no / M-Pesa code / RTGS), "
+        "who paid, and what it settles (invoice / LPO reference).\n\n"
+        "Priority guidance:\n"
+        "- CRIT: someone is blocked now, a machine is down, an explicit urgent "
+        "customer escalation, or Tanuj is tagged on something time-critical.\n"
+        "- HIGH: a payment, a customer order / LPO, a customer complaint, a "
+        "direct customer inquiry, a supplier delivery confirmation.\n"
+        "- MED: sales status posts, routine logistics, supplier price indications.\n"
+        "- LOW: greetings, banter, personal / attendance notes.\n\n"
+        "Set mentions_tanuj true only if 'Tanuj' (or his phone number) is "
+        "directly addressed."
+    )
+
+    headers = {
+        "x-api-key": api_key,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+    }
+    req = {
+        "model": ANTHROPIC_TEXT_MODEL,
+        "max_tokens": 500,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+
+    try:
+        resp = requests.post(ANTHROPIC_API, json=req, headers=headers, timeout=45)
+        resp.raise_for_status()
+    except Exception as e:
+        frappe.log_error(title="WhatsApp PA: Claude text call failed", message=str(e))
+        return None
+
+    try:
+        out = resp.json()
+        text = out["content"][0]["text"].strip()
+    except (KeyError, IndexError, ValueError) as e:
+        frappe.log_error(
+            title="WhatsApp PA: bad Anthropic text response",
+            message=f"{e}\n{resp.text[:1000]}",
+        )
+        return None
+
+    parsed = _safe_parse_json_object(text)
+    priority = str(parsed.get("priority", "MED")).upper().strip()
+    if priority not in TEXT_PRIORITIES:
+        priority = "MED"
+    category = str(parsed.get("category", "other")).lower().strip()
+    if category not in TEXT_CATEGORIES:
+        category = "other"
+    cust = parsed.get("customer_mentions") or []
+    acts = parsed.get("action_items") or []
+    if not isinstance(cust, list):
+        cust = [str(cust)]
+    if not isinstance(acts, list):
+        acts = [str(acts)]
+    return {
+        "priority": priority,
+        "category": category,
+        "summary": str(parsed.get("summary", ""))[:480],
+        "customer_mentions": [str(c)[:120] for c in cust][:10],
+        "action_items": [str(a)[:200] for a in acts][:6],
+        "mentions_tanuj": bool(parsed.get("mentions_tanuj", False)),
+    }
+
+
+def _send_text_alert(msg, conv, verdict, config):
+    """Telegram ping for a classified text message.
+
+    Gated: a ping fires only when priority is HIGH/CRIT, OR Tanuj is mentioned,
+    OR the category is payment (payments always surface). MED/LOW non-payment
+    messages are stored silently. If verdict is None (classifier failed) a flat
+    fallback alert is sent so the message is never lost."""
+    chat_id = config.get("pa_priority_telegram_chat_id")
+    if not chat_id:
+        return
+    bot_token = get_decrypted_password(
+        "VCL Channel Config", config.name, "pa_telegram_bot_token", raise_exception=False
+    )
+    if not bot_token:
+        return
+
+    group_label = conv.whatsapp_group_name or conv.whatsapp_group_id or "(DM)"
+    sender = msg.sender_name or "?"
+
+    if not verdict:
+        text = (
+            f"WhatsApp · {group_label}  [unclassified]\n"
+            f"{sender}: {(msg.content or '')[:400]}"
+        )
+    else:
+        priority = verdict["priority"]
+        category = verdict["category"]
+        gate = (
+            priority in ("HIGH", "CRIT")
+            or verdict.get("mentions_tanuj")
+            or category == "payment"
+        )
+        if not gate:
+            return  # MED / LOW non-payment — stored, no ping
+        summary = verdict.get("summary") or (msg.content or "")[:200]
+        text = (
+            f"WhatsApp · {group_label}  [{priority} · {category}]\n"
+            f"{sender}: {summary}"
+        )
+        actions = verdict.get("action_items") or []
+        if actions:
+            text += "\n\nAction items:\n" + "\n".join(f"- {a}" for a in actions[:4])
+
+    try:
+        requests.post(
+            f"{TELEGRAM_API}/bot{bot_token}/sendMessage",
+            json={"chat_id": chat_id, "text": text[:3500], "disable_web_page_preview": True},
+            timeout=5,
+        )
+    except Exception as e:
+        frappe.log_error(title="WhatsApp PA: text Telegram alert failed", message=str(e))
 
 
 # ---------------------------------------------------------------------------

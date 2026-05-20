@@ -19,8 +19,13 @@
     "media_url",
     "media_mime_type",
     "section_ai",
+    "ai_priority",
+    "ai_category",
     "ai_kind",
     "ai_summary",
+    "ai_customer_mentions",
+    "ai_action_items",
+    "ai_mentions_tanuj",
     "ai_processed_at",
     "section_meta",
     "external_id",
@@ -108,18 +113,53 @@
       "collapsible": 1
     },
     {
+      "fieldname": "ai_priority",
+      "fieldtype": "Select",
+      "label": "AI Priority",
+      "options": "\nLOW\nMED\nHIGH\nCRIT",
+      "description": "Tier 1 classifier priority for text messages",
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "ai_category",
+      "fieldtype": "Select",
+      "label": "AI Category",
+      "options": "\npayment\norder\ninquiry\nsales_status_update\nsupplier_update\ncomplaint\njob_update\nops_chatter\npersonal\nother",
+      "description": "Tier 1 classifier category for text messages",
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
       "fieldname": "ai_kind",
       "fieldtype": "Data",
       "label": "AI Kind",
       "description": "Claude Vision classification: pi, ci, bl, label_artwork, job_card_photo, product_photo, screenshot, handwritten_note, other",
-      "in_list_view": 1,
       "in_standard_filter": 1
     },
     {
       "fieldname": "ai_summary",
       "fieldtype": "Small Text",
       "label": "AI Summary",
-      "description": "One-line description from Claude Vision"
+      "description": "One-line description from Claude (Vision for images, Haiku for text)"
+    },
+    {
+      "fieldname": "ai_customer_mentions",
+      "fieldtype": "Small Text",
+      "label": "AI Customer Mentions",
+      "description": "JSON array of customer / company names Claude detected"
+    },
+    {
+      "fieldname": "ai_action_items",
+      "fieldtype": "Small Text",
+      "label": "AI Action Items",
+      "description": "JSON array of concrete next actions Claude detected"
+    },
+    {
+      "fieldname": "ai_mentions_tanuj",
+      "fieldtype": "Check",
+      "label": "AI Mentions Tanuj",
+      "description": "Claude detected Tanuj is directly addressed"
     },
     {
       "fieldname": "ai_processed_at",
