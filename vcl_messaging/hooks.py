@@ -13,3 +13,10 @@ doc_events = {
         "after_insert": "vcl_messaging.vcl_messaging.whatsapp_api.dispatch_to_n8n",
     },
 }
+
+scheduler_events = {
+    "daily": [
+        # Flag any Follow-up still Open past its deadline (Telegram to escalate_to).
+        "vcl_messaging.vcl_messaging.followups_api.escalate_followups",
+    ],
+}

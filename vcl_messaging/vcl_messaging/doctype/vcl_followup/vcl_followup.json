@@ -1,0 +1,173 @@
+{
+  "name": "VCL Followup",
+  "module": "VCL Messaging",
+  "doctype": "DocType",
+  "document_type": "Document",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "naming_rule": "Expression",
+  "autoname": "FUP-.#####",
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "track_changes": 1,
+  "field_order": [
+    "followup_type",
+    "status",
+    "column_break_1",
+    "due_date",
+    "assigned_to",
+    "escalate_to",
+    "section_source",
+    "message",
+    "conversation",
+    "source_summary",
+    "section_what",
+    "customer",
+    "customer_text",
+    "expected_amount",
+    "action",
+    "section_resolution",
+    "linked_payment_entry",
+    "resolved_on",
+    "escalated_on",
+    "notes"
+  ],
+  "fields": [
+    {
+      "fieldname": "followup_type",
+      "fieldtype": "Select",
+      "label": "Follow-up Type",
+      "options": "Payment Entry\nGeneral",
+      "default": "Payment Entry",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "label": "Status",
+      "options": "Open\nDone\nEscalated\nCancelled",
+      "default": "Open",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "due_date",
+      "fieldtype": "Date",
+      "label": "Check By (Deadline)",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "assigned_to",
+      "fieldtype": "Link",
+      "label": "Assigned To",
+      "options": "User"
+    },
+    {
+      "fieldname": "escalate_to",
+      "fieldtype": "Link",
+      "label": "Escalate To",
+      "options": "User",
+      "description": "Pinged on Telegram if the follow-up is still Open past the deadline"
+    },
+    {
+      "fieldname": "section_source",
+      "fieldtype": "Section Break",
+      "label": "Source"
+    },
+    {
+      "fieldname": "message",
+      "fieldtype": "Link",
+      "label": "Message",
+      "options": "VCL Message",
+      "reqd": 1
+    },
+    {
+      "fieldname": "conversation",
+      "fieldtype": "Link",
+      "label": "Conversation",
+      "options": "VCL Conversation"
+    },
+    {
+      "fieldname": "source_summary",
+      "fieldtype": "Small Text",
+      "label": "Source Summary",
+      "read_only": 1
+    },
+    {
+      "fieldname": "section_what",
+      "fieldtype": "Section Break",
+      "label": "What To Do"
+    },
+    {
+      "fieldname": "customer",
+      "fieldtype": "Link",
+      "label": "Customer",
+      "options": "Customer"
+    },
+    {
+      "fieldname": "customer_text",
+      "fieldtype": "Data",
+      "label": "Customer (text)",
+      "description": "Used when the customer is not in the ERPNext master"
+    },
+    {
+      "fieldname": "expected_amount",
+      "fieldtype": "Currency",
+      "label": "Expected Amount"
+    },
+    {
+      "fieldname": "action",
+      "fieldtype": "Small Text",
+      "label": "Action",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "section_resolution",
+      "fieldtype": "Section Break",
+      "label": "Resolution"
+    },
+    {
+      "fieldname": "linked_payment_entry",
+      "fieldtype": "Link",
+      "label": "Linked Payment Entry",
+      "options": "Payment Entry"
+    },
+    {
+      "fieldname": "resolved_on",
+      "fieldtype": "Datetime",
+      "label": "Resolved On",
+      "read_only": 1
+    },
+    {
+      "fieldname": "escalated_on",
+      "fieldtype": "Datetime",
+      "label": "Escalated On",
+      "read_only": 1
+    },
+    {
+      "fieldname": "notes",
+      "fieldtype": "Small Text",
+      "label": "Notes"
+    }
+  ],
+  "permissions": [
+    {
+      "role": "System Manager",
+      "read": 1, "write": 1, "create": 1, "delete": 1
+    },
+    {
+      "role": "Sales User",
+      "read": 1, "write": 1, "create": 1
+    }
+  ]
+}
