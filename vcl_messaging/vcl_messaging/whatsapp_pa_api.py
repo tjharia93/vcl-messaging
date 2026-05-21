@@ -36,10 +36,21 @@ MEDIA_BEARING_TYPES = {"image", "video", "document", "audio"}
 
 # Tier 1 text classifier — valid category values
 TEXT_CATEGORIES = [
-    "payment", "order", "inquiry", "sales_status_update", "supplier_update",
-    "complaint", "job_update", "ops_chatter", "personal", "other",
+    "payment", "purchase_order", "sales_order", "inquiry", "sales_status",
+    "supplier_update", "complaint", "job_update", "ops_chatter", "personal", "other",
 ]
 TEXT_PRIORITIES = ["LOW", "MED", "HIGH", "CRIT"]
+
+# Actionable categories -> the follow-up type each becomes.
+CATEGORY_TO_FUTYPE = {
+    "payment": "Payment Entry",
+    "purchase_order": "Purchase Order",
+    "sales_order": "Sales Order",
+}
+
+
+def _futype_for_category(category):
+    return CATEGORY_TO_FUTYPE.get(category, "General")
 
 
 # ---------------------------------------------------------------------------
@@ -755,7 +766,47 @@ def _classify_text(message_name, config_name):
     })
     frappe.db.commit()
 
+    # Actionable category -> auto-create a follow-up of the matching type.
+    # The user can retag the type later if Claude misjudged it.
+    _autocreate_followup_from_verdict(message_name, verdict)
+
     _send_text_alert(msg, conv, verdict, config)
+
+
+def _autocreate_followup_from_verdict(message_name, verdict):
+    """If Claude classified a text message as an actionable category
+    (payment / purchase_order / sales_order) and it isn't already tracked,
+    raise a follow-up of the matching type."""
+    category = verdict.get("category")
+    if category not in CATEGORY_TO_FUTYPE:
+        return
+    if frappe.db.exists("VCL Followup", {"message": message_name}):
+        return
+    futype = _futype_for_category(category)
+    mentions = verdict.get("customer_mentions") or []
+    hint = mentions[0] if mentions else None
+    customer = _match_customer_name(hint)
+    summary = verdict.get("summary") or ""
+    verb = {
+        "Payment Entry": "Confirm the payment and raise the Payment Entry",
+        "Purchase Order": "Place the Purchase Order / LPO",
+        "Sales Order": "Raise the Sales Order",
+    }.get(futype, "Follow up")
+    action = f"{verb} — {summary}" if summary else verb
+    try:
+        from vcl_messaging.vcl_messaging import followups_api
+        followups_api.create_followup(
+            message=message_name,
+            action=action[:500],
+            due_date=str(frappe.utils.add_days(frappe.utils.today(), 4)),
+            followup_type=futype,
+            status="Pending",
+            customer=customer,
+            customer_text=(None if customer else hint),
+        )
+    except Exception as e:
+        frappe.log_error(title="VCL Tier 1: auto follow-up failed",
+                         message=f"{message_name}: {e}")
 
 
 def _recent_context(msg, n=3):
@@ -790,21 +841,26 @@ def _ask_claude_text(body, group_name, sender_name, context, api_key):
         "Classify it. Return STRICTLY a JSON object and nothing else:\n"
         "{\n"
         '  "priority": "LOW" | "MED" | "HIGH" | "CRIT",\n'
-        '  "category": one of [payment, order, inquiry, sales_status_update, '
-        "supplier_update, complaint, job_update, ops_chatter, personal, other],\n"
+        '  "category": one of [payment, purchase_order, sales_order, inquiry, '
+        "sales_status, supplier_update, complaint, job_update, ops_chatter, "
+        "personal, other],\n"
         '  "summary": "one factual sentence, max 200 chars, concrete numbers/names",\n'
         '  "customer_mentions": ["company names referenced"],\n'
         '  "action_items": ["concrete next actions implied, if any"],\n'
         '  "mentions_tanuj": true | false\n'
         "}\n\n"
-        "Category guidance:\n"
+        "Category guidance — the group a message is in does NOT decide its "
+        "category; judge each message on its own content:\n"
         "- payment: ANY money movement or settlement — cheque numbers, M-Pesa "
         "codes, RTGS/EFT, bank deposits, 'paid', 'cleared', 'deposited', amounts "
         "settled against an invoice or LPO. If money has moved, choose payment.\n"
-        "- order: a customer placing/confirming an order, an LPO, quantities to "
-        "produce.\n"
+        "- purchase_order: VCL needs to BUY or procure something — an internal "
+        "instruction to place an order with a supplier, material/stock to be "
+        "bought in. (VCL is the buyer.)\n"
+        "- sales_order: a CUSTOMER is ordering FROM VCL — a customer LPO, a "
+        "confirmed customer order, quantities for VCL to produce/sell.\n"
         "- inquiry: a customer or rep asking for a price / quote / sample.\n"
-        "- sales_status_update: pipeline / follow-up posts (open / lost inquiries).\n"
+        "- sales_status: pipeline / follow-up posts (open / lost inquiries).\n"
         "- supplier_update: a supplier message — deliveries, samples, proforma, "
         "pricing.\n"
         "- complaint: quality issue, dispute, dissatisfaction.\n"
@@ -812,6 +868,8 @@ def _ask_claude_text(body, group_name, sender_name, context, api_key):
         "- ops_chatter: logistics & internal coordination, no money or order.\n"
         "- personal: greetings, personal notes, attendance.\n"
         "- other: anything else.\n\n"
+        "purchase_order vs sales_order: ask 'who is buying?' If VCL is buying, "
+        "purchase_order. If a customer is buying from VCL, sales_order.\n\n"
         "For category 'payment', the summary MUST state, where present: the "
         "amount with currency, the instrument (cheque no / M-Pesa code / RTGS), "
         "who paid, and what it settles (invoice / LPO reference).\n\n"

@@ -133,7 +133,7 @@
       "fieldname": "ai_category",
       "fieldtype": "Select",
       "label": "AI Category",
-      "options": "\npayment\norder\ninquiry\nsales_status_update\nsupplier_update\ncomplaint\njob_update\nops_chatter\npersonal\nother",
+      "options": "\npayment\npurchase_order\nsales_order\ninquiry\nsales_status\nsupplier_update\ncomplaint\njob_update\nops_chatter\npersonal\nother",
       "description": "Tier 1 classifier category for text messages",
       "in_list_view": 1,
       "in_standard_filter": 1

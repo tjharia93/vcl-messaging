@@ -40,7 +40,7 @@
       "fieldname": "followup_type",
       "fieldtype": "Select",
       "label": "Follow-up Type",
-      "options": "Payment Entry\nGeneral",
+      "options": "Payment Entry\nPurchase Order\nSales Order\nGeneral",
       "default": "Payment Entry",
       "reqd": 1,
       "in_list_view": 1,

@@ -382,6 +382,14 @@ textarea.ix-fi{ resize:vertical; line-height:1.45; }
 .ix-tag.s-Completed{ background:var(--green-bg); color:var(--green); }
 .ix-tag.s-Cancelled{ background:#EDEFF2; color:var(--muted); }
 
+/* follow-up type retag dropdown */
+.ix-fu-retag{ display:flex; align-items:center; gap:8px; margin-top:8px; }
+.ix-fu-retag > span{ font-size:9.5px; letter-spacing:.8px; text-transform:uppercase;
+  color:var(--muted); font-weight:600; }
+.ix-fu-retag select{ flex:1; border:1px solid var(--line); border-radius:6px;
+  padding:5px 8px; font-family:inherit; font-size:12px; background:var(--panel);
+  color:var(--ink); }
+
 /* payment-entry candidates */
 .ix-pe-list{ margin-top:9px; display:flex; flex-direction:column; gap:7px; }
 .ix-pe{ border:1px solid var(--line); border-radius:7px; padding:9px 10px;

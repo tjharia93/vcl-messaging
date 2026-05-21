@@ -16,6 +16,10 @@ frappe.ready(function () {
   var FU_STATUSES = ["Pending","Cheque Pending Collection","Pending Review",
     "Escalated","Completed","Cancelled"];
   var ACTIVE_FU = ["Pending","Cheque Pending Collection","Pending Review","Escalated"];
+  var FU_TYPES = ["Payment Entry","Purchase Order","Sales Order","General"];
+  var CAT_FUTYPE = { payment:"Payment Entry", purchase_order:"Purchase Order",
+                     sales_order:"Sales Order" };
+  function futypeForCat(c){ return CAT_FUTYPE[c] || "General"; }
 
   var S = { convs:[], convList:[], msgs:[], byConv:{}, custs:[], custNorm:[],
             followups:[], fuByMsg:{},
@@ -329,6 +333,7 @@ frappe.ready(function () {
       +'<span class="ix-row-prev">'+esc(fu.action||"")+'</span>'
       +'<span class="ix-row-tags">'
       +'<span class="ix-tag s-'+statusCls(fu.status)+'">'+esc(fu.status)+'</span>'
+      +'<span class="ix-tag cat">'+esc(fu.followup_type||"")+'</span>'
       +'</span></span></button>';
   }
 
@@ -485,10 +490,14 @@ frappe.ready(function () {
       : '<span class="ix-fu-cust-txt">'+esc(fu.customer_text||"—")+' · not in master</span>';
     var active = ACTIVE_FU.indexOf(fu.status)>=0;
     var h='<div class="ix-c-card ix-c-fu s-'+statusCls(fu.status)+'">'
-      +'<div class="ix-c-label">Follow-up · '+esc(fu.followup_type||"")+'</div>'
+      +'<div class="ix-c-label">Follow-up</div>'
       +'<div class="ix-fu-row"><span class="ix-fu-status s-'+statusCls(fu.status)+'">'
       +esc(fu.status)+'</span>'
       +'<span class="ix-fu-due">'+(fu.due_date?"check by "+fmtDate(fu.due_date):"")+'</span></div>'
+      +'<div class="ix-fu-retag"><span>Type</span><select data-fu-retag="'+esc(fu.name)+'">'
+      + FU_TYPES.map(function(t){
+          return '<option'+(t===fu.followup_type?" selected":"")+'>'+esc(t)+'</option>'; }).join("")
+      +'</select></div>'
       +'<div class="ix-fu-act">'+esc(fu.action||"")+'</div>'
       +'<div class="ix-fu-meta">'+custHtml
       +(fu.expected_amount?' · KES '+Number(fu.expected_amount).toLocaleString():'')+'</div>';
@@ -567,6 +576,11 @@ frappe.ready(function () {
   function fuFormHtml(m){
     var f=S.fuForm;
     return '<div class="ix-c-card ix-c-fu"><div class="ix-c-label">New follow-up</div>'
+      +'<label class="ix-fl">Type</label>'
+      +'<select class="ix-fi" id="ix-fuf-type">'
+      + FU_TYPES.map(function(t){
+          return '<option'+(t===f.type?' selected':'')+'>'+esc(t)+'</option>'; }).join('')
+      +'</select>'
       +'<label class="ix-fl">Customer · linked to the Customer master</label>'
       +'<input class="ix-fi" id="ix-fuf-cust" list="ix-cust-list" autocomplete="off" '
       +'placeholder="Type to search the Customer master" value="'+esc(f.customer)+'">'
@@ -596,13 +610,13 @@ frappe.ready(function () {
     var custName=mentions.length?mentions[0]:"";
     var matched=custName?matchCustomer(custName):null;
     var pay=extractPayment((m.ai_summary||"")+" "+(m.content||""));
-    var act;
-    if(m.ai_category==="payment"){
-      act="Confirm this payment landed — raise the Payment Entry in ERPNext.";
-    } else {
-      act=m.ai_summary || "Follow up on this message.";
-    }
-    S.fuForm={ message:m.name,
+    var ftype=futypeForCat(m.ai_category);
+    var act={
+      "Payment Entry":"Confirm this payment landed — raise the Payment Entry.",
+      "Purchase Order":"Place the Purchase Order / LPO — "+(m.ai_summary||""),
+      "Sales Order":"Raise the Sales Order — "+(m.ai_summary||""),
+    }[ftype] || (m.ai_summary||"Follow up on this message.");
+    S.fuForm={ message:m.name, type:ftype,
       customer:(matched?(matched.customer_name||matched.name):custName),
       action:act, amount:pay.amount||"", due:nextFriday() };
     render();
@@ -695,6 +709,11 @@ frappe.ready(function () {
           payment_date:pe.posting_date });
       });
     });
+    ROOT.querySelectorAll("[data-fu-retag]").forEach(function(s){
+      s.addEventListener("change", function(){
+        retagFu(s.getAttribute("data-fu-retag"), s.value);
+      });
+    });
     var pfc=document.getElementById("ix-pf-cancel");
     if(pfc) pfc.addEventListener("click", function(){ S.payForm=null; render(); });
     ROOT.querySelectorAll("[data-pf-save]").forEach(function(b){
@@ -718,8 +737,9 @@ frappe.ready(function () {
     var due=(document.getElementById("ix-fuf-due")||{}).value||"";
     if(!action.trim()||!due){ frappe.msgprint("Action and a date are required."); return; }
     var matched=matchCustomer(cust);
+    var ftype=(document.getElementById("ix-fuf-type")||{}).value||"Payment Entry";
     var args={ message:S.fuForm.message, action:action, due_date:due,
-      followup_type:"Payment Entry",
+      followup_type:ftype,
       expected_amount:(amt.replace(/[^0-9.]/g,"")||0) };
     if(matched) args.customer=matched.name; else args.customer_text=cust;
     S.busy="create"; render();
@@ -770,6 +790,21 @@ frappe.ready(function () {
       error:function(e){
         S.busy=""; render();
         frappe.msgprint("Could not update: "+esc((e&&e.message)||""));
+      }
+    });
+  }
+
+  function retagFu(fuName, newType){
+    if(S.busy) return;
+    S.busy="retag"; render();
+    frappe.call({
+      method:"frappe.client.set_value",
+      args:{ doctype:"VCL Followup", name:fuName,
+             fieldname:"followup_type", value:newType },
+      callback:function(){ S.busy=""; reloadFollowups(); },
+      error:function(e){
+        S.busy=""; render();
+        frappe.msgprint("Could not change the type: "+esc((e&&e.message)||""));
       }
     });
   }
