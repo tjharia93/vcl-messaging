@@ -19,9 +19,9 @@ frappe.ready(function () {
 
   var S = { convs:[], convList:[], msgs:[], byConv:{}, custs:[], custNorm:[],
             followups:[], fuByMsg:{},
-            activeConv:null, activeMsg:null, view:"inbox", mview:"list",
+            activeConv:null, activeMsg:null, view:"open", mview:"list",
             ctxOpen:false, tier1Missing:false, fuForm:null, peCands:null,
-            payForm:null, busy:"" };
+            payForm:null, scrollThreadBottom:false, busy:"" };
 
   /* ---------- helpers ---------- */
   function esc(s){ return (s==null?"":String(s))
@@ -187,106 +187,149 @@ frappe.ready(function () {
 
   /* ---------- render ---------- */
   function render(){
-    var t={msgs:S.msgs.length,pay:0,attn:0,tracked:S.followups.length,
-           openfu:0};
-    S.msgs.forEach(function(m){
-      if(m.ai_category==="payment") t.pay++;
-      if(actionWorthy(m)) t.attn++;
-    });
-    S.followups.forEach(function(f){ if(f.status==="Open"||f.status==="Escalated") t.openfu++; });
+    var t={
+      open: railCount("open"),
+      pending: railCount("pending"),
+      closed: railCount("closed"),
+      pay: S.msgs.filter(function(m){ return m.ai_category==="payment"; }).length,
+    };
 
     var h='<header class="ix-top">'
       +'<div class="ix-brand">VCL<span>INBOX</span></div>'
       +'<div class="ix-stats">'
-      + stat(t.msgs,"Messages","keep-xs")
-      + stat(t.pay,"Payments","")
-      + stat(t.openfu,"Open follow-ups","warn hide-sm")
-      + stat(t.tracked,"Tracked","hide-sm")
+      + stat(t.open,"Open Items","keep-xs")
+      + stat(t.pending,"Pending","warn")
+      + stat(t.closed,"Closed","hide-sm")
+      + stat(t.pay,"Payments","hide-sm")
       +'</div>'
       +'<button class="ix-refresh" id="ix-refresh">refresh</button></header>';
 
     h+='<div class="ix-main">'+renderRail()+renderThread()+renderCtx()+'</div>';
 
+    // Snapshot scroll positions — a full re-render must not jump to the top.
+    var snap={};
+    var elC=ROOT.querySelector(".ix-convs"); if(elC) snap.convs=elC.scrollTop;
+    var elM=ROOT.querySelector(".ix-msgs"); if(elM) snap.msgs=elM.scrollTop;
+    var elX=document.getElementById("ix-ctx-body"); if(elX) snap.ctx=elX.scrollTop;
+
     ROOT.className="ix-app"+(S.ctxOpen?" ctx-open":"");
     ROOT.setAttribute("data-view",S.mview);
     ROOT.innerHTML=h;
     wire();
+
+    // Restore scroll. Thread lands at the latest message when a conversation
+    // was just opened; otherwise it stays exactly where it was.
+    var nC=ROOT.querySelector(".ix-convs");
+    if(nC && snap.convs!=null) nC.scrollTop=snap.convs;
+    var nX=document.getElementById("ix-ctx-body");
+    if(nX && snap.ctx!=null) nX.scrollTop=snap.ctx;
+    var nM=ROOT.querySelector(".ix-msgs");
+    if(nM){
+      if(S.scrollThreadBottom){ nM.scrollTop=nM.scrollHeight; S.scrollThreadBottom=false; }
+      else if(snap.msgs!=null){ nM.scrollTop=snap.msgs; }
+    }
   }
   function stat(n,label,cls){
     return '<div class="ix-stat '+cls+'"><b>'+n+'</b><i>'+esc(label)+'</i></div>';
   }
 
+  var PRANK={CRIT:3,HIGH:2,MED:1,LOW:0};
+
   function renderRail(){
-    var h='<aside class="ix-rail"><div class="ix-rail-hd">'
-      +'<div class="ix-views">'
-      + vbtn("inbox","Inbox") + vbtn("tracked","Tracked") + vbtn("all","All")
-      +'</div></div>';
-    h+='<div class="ix-convs">';
-    if(S.view==="tracked"){
-      h+=renderTrackedList();
+    var h='<aside class="ix-rail"><div class="ix-rail-hd"><div class="ix-views">'
+      + vbtn("open","Open Items") + vbtn("pending","Pending")
+      + vbtn("closed","Closed") + vbtn("all","All")
+      +'</div></div><div class="ix-convs">';
+    var items=railItems();
+    if(!items.length){
+      h+='<div class="ix-empty">'+railEmpty()+'</div>';
     } else {
-      var list=(S.view==="inbox")
-        ? S.convList.filter(function(x){return x.untriaged>0;})
-        : S.convList;
-      if(!list.length){
-        h+='<div class="ix-empty">'+(S.view==="inbox"
-          ? '<b>Inbox zero.</b>Nothing untagged needs attention.'
-          : 'No conversations.')+'</div>';
-      } else {
-        list.forEach(function(x){ h+=convRow(x); });
-      }
+      items.forEach(function(it){ h+= it.fu ? fuRow(it.fu) : msgRow(it.msg); });
     }
-    h+='</div></aside>';
-    return h;
+    return h+'</div></aside>';
   }
   function vbtn(v,label){
+    var n=railCount(v);
     return '<button class="ix-view'+(S.view===v?" on":"")+'" data-view="'+v+'">'
-      +esc(label)+'</button>';
+      +esc(label)+(n!=null?' <span class="ix-view-ct">'+n+'</span>':'')+'</button>';
   }
-  function convRow(x){
-    var c=x.conv,last=x.last;
-    var prev=(last&&(last.ai_summary||last.content))||(last?"["+(last.message_type||"media")+"]":"");
-    var who=last?(last.sender_name||"?")+" — ":"";
-    return '<button class="ix-conv'+(c.name===S.activeConv?" on":"")+'" data-conv="'+esc(c.name)+'">'
-      +'<span class="ix-conv-dot p-'+rankName(x.rank)+'"></span>'
-      +'<span class="ix-conv-body">'
-      +'<span class="ix-conv-top"><span class="ix-conv-name">'
-      +esc(c.whatsapp_group_name||c.name)+'</span>'
-      +'<span class="ix-conv-time">'+fmtTime(x.lastTime)+'</span></span>'
-      +'<span class="ix-conv-prev">'+esc(who+prev)+'</span>'
-      +'<span class="ix-conv-meta"><span class="ix-wa">WhatsApp</span>'
-      +(x.hasPay?'<span class="ix-conv-pay">payments</span>':'')+'</span>'
-      +'</span>'
-      +(x.untriaged>0?'<span class="ix-conv-badge">'+x.untriaged+'</span>'
-        :'<span class="ix-conv-badge zero">0</span>')
-      +'</button>';
+  function railEmpty(){
+    if(S.view==="open") return '<b>Nothing to triage.</b>Open Items is clear.';
+    if(S.view==="pending") return '<b>Nothing pending.</b>No active follow-ups.';
+    if(S.view==="closed") return 'Nothing closed yet.';
+    return 'No messages.';
   }
-  function renderTrackedList(){
-    if(!S.followups.length)
-      return '<div class="ix-empty"><b>No follow-ups yet.</b>Tag a message in '
-        +'the inbox to track it here.</div>';
-    var h='';
-    FU_STATUSES.forEach(function(st){
-      var rows=S.followups.filter(function(f){ return f.status===st; });
-      if(!rows.length) return;
-      rows.sort(function(a,b){ return (a.due_date<b.due_date?-1:1); });
-      h+='<div class="ix-fu-sec"><span class="ix-fu-sec-name">'+esc(st)+'</span>'
-        +'<span class="ix-fu-sec-ct">'+rows.length+'</span></div>';
-      rows.forEach(function(f){
-        var who=f.customer||f.customer_text||"—";
-        var overdue=(ACTIVE_FU.indexOf(f.status)>=0&&f.due_date&&f.due_date<todayStr());
-        h+='<button class="ix-futile s-'+statusCls(f.status)+'" data-fu-open="'+esc(f.name)+'">'
-          +'<span class="ix-futile-top">'
-          +'<span class="ix-fu-status s-'+statusCls(f.status)+'">'+esc(f.status)+'</span>'
-          +'<span class="ix-futile-due'+(overdue?" od":"")+'">'
-          +(f.due_date?("due "+fmtDate(f.due_date)):"")+'</span></span>'
-          +'<span class="ix-futile-act">'+esc(f.action||"")+'</span>'
-          +'<span class="ix-futile-cust">'+esc(who)
-          +(f.expected_amount?' · KES '+Number(f.expected_amount).toLocaleString():'')
-          +'</span></button>';
-      });
+  function railCount(v){
+    if(v==="open") return S.msgs.filter(function(m){
+      return !S.fuByMsg[m.name] && !m.inbox_ignored; }).length;
+    if(v==="pending") return S.followups.filter(function(f){
+      return ACTIVE_FU.indexOf(f.status)>=0; }).length;
+    if(v==="closed") return S.followups.filter(function(f){
+      return f.status==="Completed"||f.status==="Cancelled"; }).length;
+    return null;  // "All" carries no count
+  }
+  function fuSort(a,b){
+    var o={Escalated:0,Pending:1,"Cheque Pending Collection":2,"Pending Review":3};
+    return (o[a.status]||9)-(o[b.status]||9) || (a.due_date<b.due_date?-1:1);
+  }
+  function railItems(){
+    if(S.view==="pending"){
+      return S.followups.filter(function(f){ return ACTIVE_FU.indexOf(f.status)>=0; })
+        .sort(fuSort).map(function(f){ return {fu:f}; });
+    }
+    if(S.view==="closed"){
+      return S.followups.filter(function(f){
+          return f.status==="Completed"||f.status==="Cancelled"; })
+        .sort(function(a,b){ return (b.name<a.name?-1:1); })
+        .map(function(f){ return {fu:f}; });
+    }
+    var list=S.msgs.slice();
+    if(S.view==="open"){
+      list=list.filter(function(m){ return !S.fuByMsg[m.name] && !m.inbox_ignored; });
+    }
+    list.sort(function(a,b){
+      var d=(PRANK[b.ai_priority]||0)-(PRANK[a.ai_priority]||0);
+      return d || (b.creation<a.creation?-1:1);
     });
-    return h;
+    return list.map(function(m){ return {msg:m}; });
+  }
+  function convName(cid){
+    var c=S.convs.filter(function(x){ return x.name===cid; })[0];
+    return c?(c.whatsapp_group_name||c.name):cid;
+  }
+  function msgRow(m){
+    var pri=m.ai_priority||"";
+    var prev=m.ai_summary||m.content||("["+(m.message_type||"media")+"]");
+    return '<button class="ix-row'+(m.name===S.activeMsg?" on":"")
+      +'" data-msg="'+esc(m.name)+'">'
+      +'<span class="ix-row-spine p-'+(pri||"LOW")+'"></span>'
+      +'<span class="ix-row-body">'
+      +'<span class="ix-row-top"><span class="ix-row-who">'+esc(m.sender_name||"?")+'</span>'
+      +'<span class="ix-row-grp">'+esc(convName(m.conversation))+'</span>'
+      +'<span class="ix-row-time">'+fmtTime(m.sent_at||m.creation)+'</span></span>'
+      +'<span class="ix-row-prev">'+esc(prev)+'</span>'
+      +'<span class="ix-row-tags">'
+      +(pri?'<span class="ix-tag p-'+esc(pri)+'">'+esc(pri)+'</span>':'')
+      +(m.ai_category?'<span class="ix-tag cat">'+esc(m.ai_category.replace(/_/g," "))+'</span>':'')
+      +(m.inbox_ignored?'<span class="ix-tag mut">ignored</span>':'')
+      +'</span></span></button>';
+  }
+  function fuRow(fu){
+    var who=fu.customer?custDisplay(fu.customer):(fu.customer_text||"—");
+    var overdue=(ACTIVE_FU.indexOf(fu.status)>=0&&fu.due_date&&fu.due_date<todayStr());
+    return '<button class="ix-row'+(fu.message===S.activeMsg?" on":"")
+      +'" data-fu-open="'+esc(fu.name)+'">'
+      +'<span class="ix-row-spine s-'+statusCls(fu.status)+'"></span>'
+      +'<span class="ix-row-body">'
+      +'<span class="ix-row-top"><span class="ix-row-who">'+esc(who)+'</span>'
+      +(fu.expected_amount?'<span class="ix-row-amt">KES '
+        +Number(fu.expected_amount).toLocaleString()+'</span>':'')
+      +'<span class="ix-row-time'+(overdue?" od":"")+'">'
+      +(fu.due_date?fmtDate(fu.due_date):"")+'</span></span>'
+      +'<span class="ix-row-prev">'+esc(fu.action||"")+'</span>'
+      +'<span class="ix-row-tags">'
+      +'<span class="ix-tag s-'+statusCls(fu.status)+'">'+esc(fu.status)+'</span>'
+      +'</span></span></button>';
   }
 
   function renderThread(){
@@ -575,21 +618,23 @@ frappe.ready(function () {
         S.view=b.getAttribute("data-view"); render();
       });
     });
-    ROOT.querySelectorAll(".ix-conv").forEach(function(b){
+    ROOT.querySelectorAll(".ix-row[data-msg]").forEach(function(b){
       b.addEventListener("click", function(){
-        S.activeConv=b.getAttribute("data-conv"); S.activeMsg=null;
-        S.fuForm=null; S.peCands=null; S.payForm=null; pickActiveMsg();
-        S.mview="thread"; render();
+        var m=S.msgs.filter(function(x){ return x.name===b.getAttribute("data-msg"); })[0];
+        if(!m) return;
+        S.activeConv=m.conversation; S.activeMsg=m.name;
+        S.fuForm=null; S.peCands=null; S.payForm=null;
+        S.mview="thread"; S.ctxOpen=true; S.scrollThreadBottom=true; render();
       });
     });
-    ROOT.querySelectorAll(".ix-futile").forEach(function(b){
+    ROOT.querySelectorAll(".ix-row[data-fu-open]").forEach(function(b){
       b.addEventListener("click", function(){
-        var fuName=b.getAttribute("data-fu-open");
-        var fu=S.followups.filter(function(f){return f.name===fuName;})[0];
+        var fu=S.followups.filter(function(f){
+          return f.name===b.getAttribute("data-fu-open"); })[0];
         if(!fu) return;
         S.activeConv=fu.conversation; S.activeMsg=fu.message;
         S.fuForm=null; S.peCands=null; S.payForm=null;
-        S.mview="thread"; S.ctxOpen=true; render();
+        S.mview="thread"; S.ctxOpen=true; S.scrollThreadBottom=true; render();
       });
     });
     ROOT.querySelectorAll(".ix-msg").forEach(function(a){
