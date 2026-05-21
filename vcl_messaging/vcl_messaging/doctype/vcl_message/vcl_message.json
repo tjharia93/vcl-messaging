@@ -18,6 +18,7 @@
     "content",
     "media_url",
     "media_mime_type",
+    "ocr_text",
     "section_ai",
     "ai_priority",
     "ai_category",
@@ -106,6 +107,12 @@
       "fieldname": "media_mime_type",
       "fieldtype": "Data",
       "label": "Media MIME Type"
+    },
+    {
+      "fieldname": "ocr_text",
+      "fieldtype": "Long Text",
+      "label": "OCR Text",
+      "description": "Text extracted from the media by Tesseract / pdftotext"
     },
     {
       "fieldname": "section_ai",

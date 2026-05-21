@@ -382,6 +382,7 @@ def record_media():
     data = file_field.read()
     mime = form.get("mime") or file_field.mimetype or "application/octet-stream"
     filename = form.get("filename") or _default_filename(external_id, mime)
+    ocr_text = (form.get("ocr_text") or "")[:65000]
 
     saved = save_file(
         fname=filename,
@@ -394,10 +395,28 @@ def record_media():
     frappe.db.set_value("VCL Message", msg_name, {
         "media_url": saved.file_url,
         "media_mime_type": mime,
+        "ocr_text": ocr_text,
     })
     frappe.db.commit()
 
-    # Fire Claude Vision in a background job — keep the listener fast.
+    # Rule allocator on the OCR'd text first — Claude Vision only on a miss.
+    if ocr_text.strip():
+        from vcl_messaging.vcl_messaging import allocator
+        rule = allocator.allocate(ocr_text)
+        if rule.get("matched"):
+            frappe.enqueue(
+                "vcl_messaging.vcl_messaging.whatsapp_pa_api._apply_allocation",
+                queue="short", timeout=120,
+                message_name=msg_name, result=rule, config_name=config.name,
+            )
+            return Response(
+                json.dumps({"ok": True, "message": msg_name,
+                            "file_url": saved.file_url, "mime": mime,
+                            "allocated": rule.get("rule")}),
+                status=200, mimetype="application/json",
+            )
+
+    # No rule match -> Claude Vision in a background job.
     frappe.enqueue(
         "vcl_messaging.vcl_messaging.whatsapp_pa_api._classify_media",
         queue="short",
