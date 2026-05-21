@@ -515,34 +515,75 @@ def _classify_media(message_name, config_name):
     conv = frappe.get_doc("VCL Conversation", msg.conversation)
     group_name = conv.whatsapp_group_name or "(unknown group)"
 
-    summary, kind = _ask_claude_vision(b64, mime, group_name, msg.sender_name, api_key)
+    v = _ask_claude_vision(b64, mime, group_name, msg.sender_name, api_key)
+    summary = v.get("summary")
+    kind = v.get("kind") or "other"
+    is_payment = kind in {"cheque", "bank_advice", "bank_voucher", "pi", "ci"}
 
-    frappe.db.set_value("VCL Message", message_name, {
+    fields = {
         "ai_summary": (summary or "")[:500],
-        "ai_kind": (kind or "other")[:60],
+        "ai_kind": kind[:60],
         "ai_processed_at": now_datetime(),
-    })
+    }
+    if is_payment:
+        fields["ai_category"] = "payment"
+        fields["ai_priority"] = "HIGH"
+        if v.get("payer"):
+            fields["ai_customer_mentions"] = json.dumps([v["payer"]])
+    frappe.db.set_value("VCL Message", message_name, fields)
     frappe.db.commit()
 
     config = frappe.get_doc("VCL Channel Config", config_name)
+
+    # Cheque / bank advice — money coming IN. Auto-create a payment follow-up
+    # against the payer Claude read off the document.
+    if is_payment and v.get("payer"):
+        customer = _match_customer_name(v.get("payer"))
+        amt = v.get("amount")
+        bits = [f"Raise the Payment Entry — {kind.replace('_', ' ')} from {v['payer']}"]
+        if amt:
+            bits.append(f"KES {amt:,.0f}")
+        if v.get("ref"):
+            bits.append(f"ref {v['ref']}")
+        try:
+            from vcl_messaging.vcl_messaging import followups_api
+            followups_api.create_followup(
+                message=message_name,
+                action=", ".join(bits) + ".",
+                due_date=str(frappe.utils.add_days(frappe.utils.today(), 4)),
+                followup_type="Payment Entry", status="Pending",
+                customer=customer,
+                customer_text=(None if customer else v.get("payer")),
+                expected_amount=amt,
+                payment_ref=v.get("ref"),
+            )
+        except Exception as e:
+            frappe.log_error(title="VCL vision: auto follow-up failed",
+                             message=f"{message_name}: {e}")
+
     _send_vision_alert(msg, conv, summary, kind, config)
 
 
 def _ask_claude_vision(b64, mime, group_name, sender_name, api_key):
-    """Returns (summary, kind). Handles images and PDFs. On failure (None, 'other')."""
+    """Reads an image or PDF with Claude Vision. Returns a dict:
+    {summary, kind, payer, amount, ref, bank}. payer/amount/ref/bank are
+    filled only for payment documents (cheque / bank advice / invoice)."""
     image_mimes = {"image/jpeg", "image/png", "image/gif", "image/webp"}
     is_pdf = mime == "application/pdf"
     if mime not in image_mimes and not is_pdf:
         # Audio / video go elsewhere — not auto-readable here.
-        return (f"[{mime} attachment; not auto-readable]", "other")
+        return {"summary": f"[{mime} attachment; not auto-readable]", "kind": "other"}
 
     noun = "PDF document" if is_pdf else "image"
     prompt = (
         f"You are watching the VCL WhatsApp group \"{group_name}\".\n"
-        f"\"{sender_name}\" just sent this {noun}.\n\n"
-        f"In ONE sentence (max 220 chars), describe what is visible — be concrete "
-        f"(numbers, names, what kind of document/object). Then classify the {noun} "
-        f"as exactly ONE of:\n"
+        f"\"{sender_name}\" just sent this {noun}. VCL (Vimit Converters) is a "
+        f"Kenyan paper-converting company; this group handles customer payments.\n\n"
+        f"In ONE sentence (max 220 chars), describe what is visible — be concrete. "
+        f"Then classify it as exactly ONE of:\n"
+        f"  cheque          — a bank cheque\n"
+        f"  bank_advice     — a bank transfer / Pesalink / RTGS / SWIFT advice or slip\n"
+        f"  bank_voucher    — a bank deposit / transaction voucher\n"
         f"  pi              — proforma invoice\n"
         f"  ci              — commercial invoice\n"
         f"  bl              — bill of lading\n"
@@ -552,7 +593,18 @@ def _ask_claude_vision(b64, mime, group_name, sender_name, api_key):
         f"  screenshot      — UI / chat / spreadsheet screenshot\n"
         f"  handwritten_note\n"
         f"  other\n\n"
-        f"Reply STRICTLY as JSON: {{\"summary\": \"...\", \"kind\": \"...\"}}"
+        f"If it is a cheque, bank_advice or bank_voucher — money coming IN to "
+        f"Vimit Converters — also extract WHO IS PAYING:\n"
+        f"  payer  — the customer / company / person the money is FROM. On a "
+        f"cheque this is the drawer / account holder printed on it, NOT the "
+        f"payee 'Vimit Converters'. Use the name exactly as printed.\n"
+        f"  amount — the figure amount, digits only, no commas.\n"
+        f"  ref    — the cheque number or transaction reference.\n"
+        f"  bank   — the bank name.\n\n"
+        f"Reply STRICTLY as JSON. Payment document:\n"
+        f"{{\"summary\":\"...\",\"kind\":\"cheque\",\"payer\":\"...\","
+        f"\"amount\":114114,\"ref\":\"...\",\"bank\":\"...\"}}\n"
+        f"Anything else: {{\"summary\":\"...\",\"kind\":\"...\"}}"
     )
 
     headers = {
@@ -580,17 +632,29 @@ def _ask_claude_vision(b64, mime, group_name, sender_name, api_key):
         resp.raise_for_status()
     except Exception as e:
         frappe.log_error(title="WhatsApp PA: Claude vision call failed", message=str(e))
-        return (None, "other")
+        return {"summary": None, "kind": "other"}
 
     try:
         out = resp.json()
         text = out["content"][0]["text"].strip()
     except (KeyError, IndexError, ValueError) as e:
         frappe.log_error(title="WhatsApp PA: bad Anthropic response", message=f"{e}\n{resp.text[:1000]}")
-        return (None, "other")
+        return {"summary": None, "kind": "other"}
 
     parsed = _safe_parse_json_object(text)
-    return (parsed.get("summary", text[:200]), parsed.get("kind", "other"))
+    amt = parsed.get("amount")
+    try:
+        amt = float(str(amt).replace(",", "").strip()) if amt not in (None, "") else None
+    except (ValueError, TypeError):
+        amt = None
+    return {
+        "summary": parsed.get("summary", text[:200]),
+        "kind": parsed.get("kind", "other"),
+        "payer": (parsed.get("payer") or "").strip() or None,
+        "amount": amt,
+        "ref": (parsed.get("ref") or "").strip() or None,
+        "bank": (parsed.get("bank") or "").strip() or None,
+    }
 
 
 def _safe_parse_json_object(text):
