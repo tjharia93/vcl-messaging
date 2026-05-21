@@ -19,6 +19,7 @@
     "escalate_to",
     "section_source",
     "message",
+    "related_messages",
     "conversation",
     "source_summary",
     "section_what",
@@ -92,6 +93,12 @@
       "label": "Message",
       "options": "VCL Message",
       "reqd": 1
+    },
+    {
+      "fieldname": "related_messages",
+      "fieldtype": "Long Text",
+      "label": "Related Messages",
+      "description": "JSON list of additional VCL Message names combined into this one follow-up"
     },
     {
       "fieldname": "conversation",

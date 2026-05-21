@@ -15,6 +15,8 @@ Loop:
 All write logic lives here; the VCL Followup doctype stays a plain record.
 """
 
+import json
+
 import frappe
 import requests
 from frappe.utils import flt, now_datetime, today
@@ -46,13 +48,28 @@ def _default_user():
 # Endpoints
 # ---------------------------------------------------------------------------
 
+def _rel_messages(value):
+    """Normalise the related-messages arg to a JSON string (or None)."""
+    if not value:
+        return None
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (json.JSONDecodeError, ValueError):
+            value = [value]
+    if isinstance(value, (list, tuple)):
+        clean = [str(v) for v in value if v]
+        return json.dumps(clean) if clean else None
+    return None
+
+
 @frappe.whitelist()
 def create_followup(message, action, due_date, followup_type="Payment Entry",
                     status="Pending", customer=None, customer_text=None,
                     expected_amount=None, assigned_to=None, escalate_to=None,
                     payment_account=None, payment_ref=None, payment_date=None,
-                    notes=None):
-    """Raise a Follow-up against a VCL Message."""
+                    related_messages=None, notes=None):
+    """Raise a Follow-up against a VCL Message (optionally combining several)."""
     if not frappe.db.exists("VCL Message", message):
         frappe.throw(f"VCL Message {message} not found")
 
@@ -62,6 +79,7 @@ def create_followup(message, action, due_date, followup_type="Payment Entry",
         "followup_type": followup_type or "Payment Entry",
         "status": status or "Pending",
         "message": message,
+        "related_messages": _rel_messages(related_messages),
         "customer": customer or None,
         "customer_text": (customer_text or None) if not customer else None,
         "expected_amount": flt(expected_amount) or None,
@@ -90,11 +108,11 @@ def get_followups(status=None):
         "VCL Followup",
         filters=filters,
         fields=[
-            "name", "followup_type", "status", "message", "conversation",
-            "customer", "customer_text", "expected_amount", "action", "due_date",
-            "assigned_to", "escalate_to", "linked_payment_entry",
-            "payment_account", "payment_ref", "payment_date", "notes",
-            "resolved_on", "escalated_on",
+            "name", "followup_type", "status", "message", "related_messages",
+            "conversation", "customer", "customer_text", "expected_amount",
+            "action", "due_date", "assigned_to", "escalate_to",
+            "linked_payment_entry", "payment_account", "payment_ref",
+            "payment_date", "notes", "resolved_on", "escalated_on",
         ],
         order_by="creation desc",
         limit_page_length=0,
