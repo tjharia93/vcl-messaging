@@ -291,6 +291,12 @@ textarea.ix-fi{ resize:vertical; line-height:1.45; }
 .ix-fl-row{ display:flex; gap:9px; }
 .ix-fl-row > div{ flex:1; min-width:0; }
 .ix-fl-note{ font-size:10.5px; color:var(--muted); margin-top:9px; font-style:italic; }
+.ix-fl-hint{ font-size:10.5px; margin-top:5px; min-height:14px; }
+.ix-fl-hint .ok{ color:var(--green); font-weight:600; }
+.ix-fl-hint .warn{ color:var(--high); }
+.ix-fu-cust{ color:var(--green); font-weight:600; text-decoration:none; }
+.ix-fu-cust:hover{ text-decoration:underline; }
+.ix-fu-cust-txt{ color:var(--high); }
 
 /* payment-entry candidates */
 .ix-pe-list{ margin-top:9px; display:flex; flex-direction:column; gap:7px; }

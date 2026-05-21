@@ -27,6 +27,7 @@
     "ai_action_items",
     "ai_mentions_tanuj",
     "ai_processed_at",
+    "inbox_ignored",
     "section_meta",
     "external_id",
     "sender_name",
@@ -165,6 +166,13 @@
       "fieldname": "ai_processed_at",
       "fieldtype": "Datetime",
       "label": "AI Processed At"
+    },
+    {
+      "fieldname": "inbox_ignored",
+      "fieldtype": "Check",
+      "label": "Ignored in Inbox",
+      "description": "Triaged as no-action — hidden from the Inbox view",
+      "in_standard_filter": 1
     },
     {
       "fieldname": "section_meta",

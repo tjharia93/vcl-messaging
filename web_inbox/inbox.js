@@ -14,7 +14,8 @@ frappe.ready(function () {
   var FUP_API = "vcl_messaging.vcl_messaging.followups_api.";
   var FULL = ["name","conversation","sender_name","message_type","content","sent_at",
     "creation","ai_priority","ai_category","ai_kind","ai_summary","ai_customer_mentions",
-    "ai_action_items","ai_mentions_tanuj","media_url","media_mime_type","direction"];
+    "ai_action_items","ai_mentions_tanuj","media_url","media_mime_type","direction",
+    "inbox_ignored"];
   var SAFE = ["name","conversation","sender_name","message_type","content","sent_at",
     "creation","ai_kind","ai_summary","media_url","media_mime_type","direction"];
 
@@ -90,6 +91,23 @@ frappe.ready(function () {
     return o;
   }
 
+  function custOptions(){
+    var h="";
+    S.custs.forEach(function(c){ h+='<option value="'+esc(c.customer_name||c.name)+'">'; });
+    return h;
+  }
+  function custDisplay(name){
+    var c=S.custs.filter(function(x){return x.name===name;})[0];
+    return c?(c.customer_name||c.name):name;
+  }
+  function custHint(v){
+    v=(v||"").trim(); if(!v) return "";
+    var c=matchCustomer(v);
+    return c
+      ? '<span class="ok">&#10003; links to Customer: '+esc(c.customer_name||c.name)+'</span>'
+      : '<span class="warn">not in the Customer master — will be saved as text</span>';
+  }
+
   function call(method, args){
     return new Promise(function(res,rej){
       frappe.call({ method:method, args:args||{},
@@ -151,7 +169,7 @@ frappe.ready(function () {
       ms.forEach(function(m){
         var p=PR[m.ai_priority]||0; if(p>rank) rank=p;
         if(m.ai_category==="payment") hasPay=true;
-        if(actionWorthy(m) && !S.fuByMsg[m.name]) untriaged++;
+        if(actionWorthy(m) && !S.fuByMsg[m.name] && !m.inbox_ignored) untriaged++;
       });
       return { conv:c, msgs:ms, last:last, rank:rank, hasPay:hasPay,
                untriaged:untriaged,
@@ -297,7 +315,7 @@ frappe.ready(function () {
     var isText=(m.message_type||"text")==="text";
     var fu=S.fuByMsg[m.name];
     var h='<article class="ix-msg'+(m.name===S.activeMsg?" on":"")
-      +(fu?" is-tracked":"")+'" data-msg="'+esc(m.name)+'">';
+      +((fu||m.inbox_ignored)?" is-tracked":"")+'" data-msg="'+esc(m.name)+'">';
     h+='<div class="ix-msg-meta"><span class="ix-from">'+esc(m.sender_name||"?")
       +'</span><span class="ix-time">'+fmtTime(m.sent_at||m.creation)+'</span></div>';
     if(!isText){
@@ -322,6 +340,7 @@ frappe.ready(function () {
     if(!isText&&m.ai_kind) chips+='<span class="ix-cat">'+esc(m.ai_kind)+'</span>';
     if(m.ai_mentions_tanuj) chips+='<span class="ix-pri p-CRIT">@ TANUJ</span>';
     if(fu) chips+='<span class="ix-trk s-'+esc(fu.status)+'">&#10003; '+esc(fu.status)+'</span>';
+    else if(m.inbox_ignored) chips+='<span class="ix-trk s-Cancelled">ignored</span>';
     if(m.ai_summary) chips+='<span class="ix-ai-sum">'+esc(m.ai_summary)+'</span>';
     if(chips) h+='<div class="ix-ai">'+chips+'</div>';
     return h+'</article>';
@@ -401,20 +420,35 @@ frappe.ready(function () {
       return fuFormHtml(m);
     }
     if(!fu){
-      return '<div class="ix-c-card ix-c-fu"><div class="ix-c-label">Follow-up</div>'
-        +'<div class="ix-c-empty">Not tracked. Raise a follow-up to action this '
-        +'and move it out of the inbox.</div>'
-        +'<button class="ix-btn primary" id="ix-fu-add">+ Add follow-up</button></div>';
+      if(m.inbox_ignored){
+        return '<div class="ix-c-card ix-c-fu s-Cancelled"><div class="ix-c-label">Triage</div>'
+          +'<div class="ix-fu-row"><span class="ix-fu-status s-Cancelled">IGNORED</span></div>'
+          +'<div class="ix-c-empty">Marked no-action — hidden from the Inbox view.</div>'
+          +'<div class="ix-fu-btns">'
+          +'<button class="ix-btn" id="ix-unignore">Un-ignore</button>'
+          +'<button class="ix-btn primary" id="ix-fu-add">+ Add follow-up</button>'
+          +'</div></div>';
+      }
+      return '<div class="ix-c-card ix-c-fu"><div class="ix-c-label">Triage</div>'
+        +'<div class="ix-c-empty">Not tracked. Add a follow-up to action this, or '
+        +'ignore it — either way it leaves the Inbox.</div>'
+        +'<div class="ix-fu-btns">'
+        +'<button class="ix-btn primary" id="ix-fu-add">+ Add follow-up</button>'
+        +'<button class="ix-btn ghost" id="ix-ignore">Ignore</button>'
+        +'</div></div>';
     }
     /* existing follow-up */
-    var who=fu.customer||fu.customer_text||"—";
+    var custHtml = fu.customer
+      ? '<a class="ix-fu-cust" target="_blank" href="/app/customer/'
+        +encodeURIComponent(fu.customer)+'">'+esc(custDisplay(fu.customer))+'</a>'
+      : '<span class="ix-fu-cust-txt">'+esc(fu.customer_text||"—")+' · not in master</span>';
     var h='<div class="ix-c-card ix-c-fu s-'+esc(fu.status)+'">'
       +'<div class="ix-c-label">Follow-up · '+esc(fu.followup_type||"")+'</div>'
       +'<div class="ix-fu-row"><span class="ix-fu-status s-'+esc(fu.status)+'">'
       +esc(fu.status)+'</span>'
       +'<span class="ix-fu-due">'+(fu.due_date?"check by "+fmtDate(fu.due_date):"")+'</span></div>'
       +'<div class="ix-fu-act">'+esc(fu.action||"")+'</div>'
-      +'<div class="ix-fu-meta">'+esc(who)
+      +'<div class="ix-fu-meta">'+custHtml
       +(fu.expected_amount?' · KES '+Number(fu.expected_amount).toLocaleString():'')+'</div>';
     if(fu.linked_payment_entry){
       h+='<a class="ix-fu-pe" target="_blank" href="/app/payment-entry/'
@@ -459,8 +493,11 @@ frappe.ready(function () {
   function fuFormHtml(m){
     var f=S.fuForm;
     return '<div class="ix-c-card ix-c-fu"><div class="ix-c-label">New follow-up</div>'
-      +'<label class="ix-fl">Customer</label>'
-      +'<input class="ix-fi" id="ix-fuf-cust" value="'+esc(f.customer)+'">'
+      +'<label class="ix-fl">Customer · linked to the Customer master</label>'
+      +'<input class="ix-fi" id="ix-fuf-cust" list="ix-cust-list" autocomplete="off" '
+      +'placeholder="Type to search the Customer master" value="'+esc(f.customer)+'">'
+      +'<datalist id="ix-cust-list">'+custOptions()+'</datalist>'
+      +'<div class="ix-fl-hint" id="ix-fuf-custhint">'+custHint(f.customer)+'</div>'
       +'<label class="ix-fl">Action</label>'
       +'<textarea class="ix-fi" id="ix-fuf-action" rows="3">'+esc(f.action)+'</textarea>'
       +'<div class="ix-fl-row">'
@@ -541,11 +578,21 @@ frappe.ready(function () {
       var m=S.msgs.filter(function(x){return x.name===S.activeMsg;})[0];
       if(m) openFuForm(m);
     });
+    /* triage: ignore / un-ignore */
+    var ign=document.getElementById("ix-ignore");
+    if(ign) ign.addEventListener("click", function(){ setIgnored(S.activeMsg,1); });
+    var unign=document.getElementById("ix-unignore");
+    if(unign) unign.addEventListener("click", function(){ setIgnored(S.activeMsg,0); });
     /* follow-up: form */
     var save=document.getElementById("ix-fuf-save");
     if(save) save.addEventListener("click", submitFuForm);
     var fcancel=document.getElementById("ix-fuf-cancel");
     if(fcancel) fcancel.addEventListener("click", function(){ S.fuForm=null; render(); });
+    var custIn=document.getElementById("ix-fuf-cust");
+    if(custIn) custIn.addEventListener("input", function(){
+      var hint=document.getElementById("ix-fuf-custhint");
+      if(hint) hint.innerHTML=custHint(custIn.value);
+    });
     /* follow-up: resolve */
     ROOT.querySelectorAll("[data-fu-find]").forEach(function(b){
       b.addEventListener("click", function(){ findPE(b.getAttribute("data-fu-find")); });
@@ -605,6 +652,26 @@ frappe.ready(function () {
       frappe.msgprint("Could not update the follow-up: "+esc((e&&e.message)||""));
     });
   }
+  function setIgnored(msgName, val){
+    if(!msgName || S.busy) return;
+    S.busy="ignore"; render();
+    frappe.call({
+      method:"frappe.client.set_value",
+      args:{ doctype:"VCL Message", name:msgName,
+             fieldname:"inbox_ignored", value:val?1:0 },
+      callback:function(){
+        S.busy="";
+        var m=S.msgs.filter(function(x){return x.name===msgName;})[0];
+        if(m) m.inbox_ignored=val?1:0;
+        deriveConvs(); render();
+      },
+      error:function(e){
+        S.busy=""; render();
+        frappe.msgprint("Could not update: "+esc((e&&e.message)||""));
+      }
+    });
+  }
+
   function reloadFollowups(){
     call(FUP_API+"get_followups").then(function(fups){
       S.followups=fups||[];
