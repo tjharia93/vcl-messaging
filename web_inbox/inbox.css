@@ -298,6 +298,41 @@ textarea.ix-fi{ resize:vertical; line-height:1.45; }
 .ix-fu-cust:hover{ text-decoration:underline; }
 .ix-fu-cust-txt{ color:var(--high); }
 
+/* ===== follow-up pipeline (6 statuses) ===== */
+.ix-fu-sec{ display:flex; justify-content:space-between; align-items:center;
+  padding:11px 14px 5px; background:var(--bg); border-top:1px solid var(--line); }
+.ix-fu-sec:first-child{ border-top:none; }
+.ix-fu-sec-name{ font-size:10px; letter-spacing:1px; text-transform:uppercase;
+  font-weight:700; color:var(--navy); }
+.ix-fu-sec-ct{ font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--mid);
+  background:var(--panel); border:1px solid var(--line); border-radius:9px; padding:0 7px; }
+
+/* status colours — applies to .ix-fu-status, .ix-trk, .ix-futile, .ix-c-fu */
+.ix-fu-status,.ix-trk{ font-size:9.5px; font-weight:700; letter-spacing:.4px;
+  padding:2px 8px; border-radius:3px; }
+.s-Pending.ix-fu-status,.s-Pending.ix-trk{ background:var(--blue-bg); color:var(--blue); }
+.s-ChequePendingCollection.ix-fu-status,.s-ChequePendingCollection.ix-trk{
+  background:var(--amber-bg); color:var(--high); }
+.s-PendingReview.ix-fu-status,.s-PendingReview.ix-trk{ background:#ECE9F6; color:#5B4B9E; }
+.s-Completed.ix-fu-status,.s-Completed.ix-trk{ background:var(--green-bg); color:var(--green); }
+.s-Escalated.ix-fu-status,.s-Escalated.ix-trk{ background:var(--crit-bg); color:var(--crit); }
+.s-Cancelled.ix-fu-status,.s-Cancelled.ix-trk{ background:#EDEFF2; color:var(--muted); }
+.ix-futile.s-Completed,.ix-futile.s-Cancelled{ opacity:.62; }
+.ix-c-fu.s-Pending{ background:#F3F5FC; }
+.ix-c-fu.s-ChequePendingCollection{ background:var(--amber-bg); border-color:#E8C3B2; }
+.ix-c-fu.s-PendingReview{ background:#F1EFF8; border-color:#D6CFEB; }
+.ix-c-fu.s-Completed{ background:var(--green-bg); border-color:#C6E4D1; }
+.ix-c-fu.s-Escalated{ background:var(--crit-bg); border-color:#E8C3B2; }
+.ix-c-fu.s-Cancelled{ background:#F1F2F5; }
+
+/* payment detail block */
+.ix-fu-pay{ margin-top:9px; padding:8px 10px; background:#F4F6FB;
+  border:1px solid var(--line); border-radius:7px; }
+.ix-fu-pay .ix-fu-pe{ margin:0 0 5px; }
+
+/* manual payment form */
+.ix-pay-form{ margin-top:10px; border-top:1px dashed var(--line); padding-top:9px; }
+
 /* payment-entry candidates */
 .ix-pe-list{ margin-top:9px; display:flex; flex-direction:column; gap:7px; }
 .ix-pe{ border:1px solid var(--line); border-radius:7px; padding:9px 10px;

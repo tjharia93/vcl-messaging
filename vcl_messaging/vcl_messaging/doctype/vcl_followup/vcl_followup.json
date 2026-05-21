@@ -28,6 +28,9 @@
     "action",
     "section_resolution",
     "linked_payment_entry",
+    "payment_account",
+    "payment_ref",
+    "payment_date",
     "resolved_on",
     "escalated_on",
     "notes"
@@ -47,8 +50,8 @@
       "fieldname": "status",
       "fieldtype": "Select",
       "label": "Status",
-      "options": "Open\nDone\nEscalated\nCancelled",
-      "default": "Open",
+      "options": "Pending\nCheque Pending Collection\nPending Review\nCompleted\nEscalated\nCancelled",
+      "default": "Pending",
       "reqd": 1,
       "in_list_view": 1,
       "in_standard_filter": 1
@@ -141,6 +144,22 @@
       "fieldtype": "Link",
       "label": "Linked Payment Entry",
       "options": "Payment Entry"
+    },
+    {
+      "fieldname": "payment_account",
+      "fieldtype": "Data",
+      "label": "Bank / Cash Account",
+      "description": "Account the money was received into (from the Payment Entry, or keyed in)"
+    },
+    {
+      "fieldname": "payment_ref",
+      "fieldtype": "Data",
+      "label": "Payment / Cheque Ref"
+    },
+    {
+      "fieldname": "payment_date",
+      "fieldtype": "Date",
+      "label": "Payment Date"
     },
     {
       "fieldname": "resolved_on",

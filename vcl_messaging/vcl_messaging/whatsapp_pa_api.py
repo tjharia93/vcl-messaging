@@ -178,18 +178,28 @@ def _ingest(payload, config):
     })
     frappe.db.commit()
 
-    # Text -> Tier 1 classifier in the background; it fires its own alert.
+    # Text -> rule allocator first (regex, no Claude). A recognised payment is
+    #         classified + auto-tracked by _apply_allocation. Unrecognised text
+    #         falls back to the Tier 1 Claude classifier.
     # Media -> _classify_media (triggered later by record_media).
     # Anything else (location/contacts) -> immediate flat alert.
     if msg_type == "text" and (body or "").strip():
-        frappe.enqueue(
-            "vcl_messaging.vcl_messaging.whatsapp_pa_api._classify_text",
-            queue="short",
-            timeout=120,
-            message_name=msg.name,
-            config_name=config.name,
-        )
-        alert = {"sent": False, "reason": "deferred_for_classification"}
+        from vcl_messaging.vcl_messaging import allocator
+        rule = allocator.allocate(body, payload.get("group_name"))
+        if rule.get("matched"):
+            frappe.enqueue(
+                "vcl_messaging.vcl_messaging.whatsapp_pa_api._apply_allocation",
+                queue="short", timeout=120,
+                message_name=msg.name, result=rule, config_name=config.name,
+            )
+            alert = {"sent": False, "reason": "rule_allocated", "rule": rule.get("rule")}
+        else:
+            frappe.enqueue(
+                "vcl_messaging.vcl_messaging.whatsapp_pa_api._classify_text",
+                queue="short", timeout=120,
+                message_name=msg.name, config_name=config.name,
+            )
+            alert = {"sent": False, "reason": "deferred_for_classification"}
     else:
         alert = _send_telegram_alert(payload, conv_name, msg.name, config)
 
@@ -835,6 +845,77 @@ def _send_text_alert(msg, conv, verdict, config):
         )
     except Exception as e:
         frappe.log_error(title="WhatsApp PA: text Telegram alert failed", message=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Rule allocator — apply a regex match (the Claude-free path)
+# ---------------------------------------------------------------------------
+
+def _match_customer_name(name):
+    """Best-effort: resolve a parsed customer / payer name to a Customer."""
+    if not name or len(name.strip()) < 3:
+        return None
+    nm = name.strip()
+    hit = frappe.db.get_value("Customer", {"customer_name": nm}, "name")
+    if hit:
+        return hit
+    rows = frappe.get_all(
+        "Customer",
+        filters={"customer_name": ["like", f"%{nm}%"]},
+        fields=["name"], limit_page_length=1,
+    )
+    return rows[0]["name"] if rows else None
+
+
+def _apply_allocation(message_name, result, config_name):
+    """Background job. Writes the rule allocator's verdict onto the VCL Message,
+    auto-creates the Follow-up, fires the Telegram alert — all without Claude."""
+    msg = frappe.get_doc("VCL Message", message_name)
+    config = frappe.get_doc("VCL Channel Config", config_name)
+
+    hint = result.get("customer_hint")
+    mentions = [hint] if hint else []
+    fudef = result.get("followup") or {}
+    actions = [fudef["action"]] if fudef.get("action") else []
+
+    frappe.db.set_value("VCL Message", message_name, {
+        "ai_priority": result.get("priority", "MED"),
+        "ai_category": result.get("category", "payment"),
+        "ai_summary": (result.get("summary") or "")[:500],
+        "ai_customer_mentions": json.dumps(mentions),
+        "ai_action_items": json.dumps(actions),
+        "ai_processed_at": now_datetime(),
+    })
+    frappe.db.commit()
+
+    if fudef:
+        customer = _match_customer_name(hint)
+        try:
+            from vcl_messaging.vcl_messaging import followups_api
+            followups_api.create_followup(
+                message=message_name,
+                action=fudef.get("action") or "Follow up on this payment.",
+                due_date=str(frappe.utils.add_days(frappe.utils.today(), 4)),
+                followup_type=fudef.get("type", "Payment Entry"),
+                status=fudef.get("status", "Pending"),
+                customer=customer,
+                customer_text=(None if customer else hint),
+                expected_amount=result.get("amount"),
+            )
+        except Exception as e:
+            frappe.log_error(title="VCL allocator: auto follow-up failed",
+                             message=f"{message_name}: {e}")
+
+    conv = frappe.get_doc("VCL Conversation", msg.conversation)
+    verdict = {
+        "priority": result.get("priority", "MED"),
+        "category": result.get("category", "payment"),
+        "summary": result.get("summary"),
+        "customer_mentions": mentions,
+        "action_items": actions,
+        "mentions_tanuj": False,
+    }
+    _send_text_alert(msg, conv, verdict, config)
 
 
 # ---------------------------------------------------------------------------

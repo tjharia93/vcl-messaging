@@ -12,22 +12,22 @@ frappe.ready(function () {
 
   var MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   var FUP_API = "vcl_messaging.vcl_messaging.followups_api.";
-  var FULL = ["name","conversation","sender_name","message_type","content","sent_at",
-    "creation","ai_priority","ai_category","ai_kind","ai_summary","ai_customer_mentions",
-    "ai_action_items","ai_mentions_tanuj","media_url","media_mime_type","direction",
-    "inbox_ignored"];
-  var SAFE = ["name","conversation","sender_name","message_type","content","sent_at",
-    "creation","ai_kind","ai_summary","media_url","media_mime_type","direction"];
+  // Follow-up pipeline — section order in the Tracked view.
+  var FU_STATUSES = ["Pending","Cheque Pending Collection","Pending Review",
+    "Escalated","Completed","Cancelled"];
+  var ACTIVE_FU = ["Pending","Cheque Pending Collection","Pending Review","Escalated"];
 
   var S = { convs:[], convList:[], msgs:[], byConv:{}, custs:[], custNorm:[],
             followups:[], fuByMsg:{},
             activeConv:null, activeMsg:null, view:"inbox", mview:"list",
-            ctxOpen:false, tier1Missing:false, fuForm:null, peCands:null, busy:"" };
+            ctxOpen:false, tier1Missing:false, fuForm:null, peCands:null,
+            payForm:null, busy:"" };
 
   /* ---------- helpers ---------- */
   function esc(s){ return (s==null?"":String(s))
     .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
   function pad(n){ return (n<10?"0":"")+n; }
+  function statusCls(s){ return (s||"").replace(/ /g,""); }
 
   function fmtTime(s){
     if(!s) return "";
@@ -131,9 +131,9 @@ frappe.ready(function () {
       ["name","whatsapp_group_name","whatsapp_group_id","channel"],{limit:0});
     var custP=getList("Customer",["name","customer_name"],
       {limit:0,order_by:"customer_name asc"}).catch(function(){return [];});
-    var msgP=getList("VCL Message",FULL,{order_by:"creation asc"})
-      .catch(function(){ S.tier1Missing=true;
-        return getList("VCL Message",SAFE,{order_by:"creation asc"}); });
+    // Wildcard fields — returns whatever columns exist on the live site, so
+    // a field added to the app but not yet deployed never breaks the inbox.
+    var msgP=getList("VCL Message",["*"],{order_by:"creation asc"});
     var fupP=call(FUP_API+"get_followups").catch(function(){ return []; });
 
     Promise.all([convP,custP,msgP,fupP]).then(function(r){
@@ -221,10 +221,6 @@ frappe.ready(function () {
       +'<div class="ix-views">'
       + vbtn("inbox","Inbox") + vbtn("tracked","Tracked") + vbtn("all","All")
       +'</div></div>';
-    if(S.tier1Missing){
-      h+='<div class="ix-banner">Tier 1 fields not deployed — update the '
-        +'<code>vcl-messaging</code> app.</div>';
-    }
     h+='<div class="ix-convs">';
     if(S.view==="tracked"){
       h+=renderTrackedList();
@@ -269,24 +265,26 @@ frappe.ready(function () {
     if(!S.followups.length)
       return '<div class="ix-empty"><b>No follow-ups yet.</b>Tag a message in '
         +'the inbox to track it here.</div>';
-    var order={Open:0,Escalated:1,Done:2,Cancelled:3};
-    var fl=S.followups.slice().sort(function(a,b){
-      return (order[a.status]||0)-(order[b.status]||0)
-        || (a.due_date<b.due_date?-1:1);
-    });
     var h='';
-    fl.forEach(function(f){
-      var who=f.customer||f.customer_text||"—";
-      var overdue=(f.status==="Open"&&f.due_date&&f.due_date<todayStr());
-      h+='<button class="ix-futile s-'+esc(f.status)+'" data-fu-open="'+esc(f.name)+'">'
-        +'<span class="ix-futile-top">'
-        +'<span class="ix-fu-status s-'+esc(f.status)+'">'+esc(f.status)+'</span>'
-        +'<span class="ix-futile-due'+(overdue?" od":"")+'">'
-        +(f.due_date?("due "+fmtDate(f.due_date)):"")+'</span></span>'
-        +'<span class="ix-futile-act">'+esc(f.action||"")+'</span>'
-        +'<span class="ix-futile-cust">'+esc(who)
-        +(f.expected_amount?' · KES '+Number(f.expected_amount).toLocaleString():'')
-        +'</span></button>';
+    FU_STATUSES.forEach(function(st){
+      var rows=S.followups.filter(function(f){ return f.status===st; });
+      if(!rows.length) return;
+      rows.sort(function(a,b){ return (a.due_date<b.due_date?-1:1); });
+      h+='<div class="ix-fu-sec"><span class="ix-fu-sec-name">'+esc(st)+'</span>'
+        +'<span class="ix-fu-sec-ct">'+rows.length+'</span></div>';
+      rows.forEach(function(f){
+        var who=f.customer||f.customer_text||"—";
+        var overdue=(ACTIVE_FU.indexOf(f.status)>=0&&f.due_date&&f.due_date<todayStr());
+        h+='<button class="ix-futile s-'+statusCls(f.status)+'" data-fu-open="'+esc(f.name)+'">'
+          +'<span class="ix-futile-top">'
+          +'<span class="ix-fu-status s-'+statusCls(f.status)+'">'+esc(f.status)+'</span>'
+          +'<span class="ix-futile-due'+(overdue?" od":"")+'">'
+          +(f.due_date?("due "+fmtDate(f.due_date)):"")+'</span></span>'
+          +'<span class="ix-futile-act">'+esc(f.action||"")+'</span>'
+          +'<span class="ix-futile-cust">'+esc(who)
+          +(f.expected_amount?' · KES '+Number(f.expected_amount).toLocaleString():'')
+          +'</span></button>';
+      });
     });
     return h;
   }
@@ -339,7 +337,7 @@ frappe.ready(function () {
     else if(isText) chips+='<span class="ix-cat c-pending">unclassified</span>';
     if(!isText&&m.ai_kind) chips+='<span class="ix-cat">'+esc(m.ai_kind)+'</span>';
     if(m.ai_mentions_tanuj) chips+='<span class="ix-pri p-CRIT">@ TANUJ</span>';
-    if(fu) chips+='<span class="ix-trk s-'+esc(fu.status)+'">&#10003; '+esc(fu.status)+'</span>';
+    if(fu) chips+='<span class="ix-trk s-'+statusCls(fu.status)+'">&#10003; '+esc(fu.status)+'</span>';
     else if(m.inbox_ignored) chips+='<span class="ix-trk s-Cancelled">ignored</span>';
     if(m.ai_summary) chips+='<span class="ix-ai-sum">'+esc(m.ai_summary)+'</span>';
     if(chips) h+='<div class="ix-ai">'+chips+'</div>';
@@ -442,33 +440,46 @@ frappe.ready(function () {
       ? '<a class="ix-fu-cust" target="_blank" href="/app/customer/'
         +encodeURIComponent(fu.customer)+'">'+esc(custDisplay(fu.customer))+'</a>'
       : '<span class="ix-fu-cust-txt">'+esc(fu.customer_text||"—")+' · not in master</span>';
-    var h='<div class="ix-c-card ix-c-fu s-'+esc(fu.status)+'">'
+    var active = ACTIVE_FU.indexOf(fu.status)>=0;
+    var h='<div class="ix-c-card ix-c-fu s-'+statusCls(fu.status)+'">'
       +'<div class="ix-c-label">Follow-up · '+esc(fu.followup_type||"")+'</div>'
-      +'<div class="ix-fu-row"><span class="ix-fu-status s-'+esc(fu.status)+'">'
+      +'<div class="ix-fu-row"><span class="ix-fu-status s-'+statusCls(fu.status)+'">'
       +esc(fu.status)+'</span>'
       +'<span class="ix-fu-due">'+(fu.due_date?"check by "+fmtDate(fu.due_date):"")+'</span></div>'
       +'<div class="ix-fu-act">'+esc(fu.action||"")+'</div>'
       +'<div class="ix-fu-meta">'+custHtml
       +(fu.expected_amount?' · KES '+Number(fu.expected_amount).toLocaleString():'')+'</div>';
-    if(fu.linked_payment_entry){
-      h+='<a class="ix-fu-pe" target="_blank" href="/app/payment-entry/'
-        +encodeURIComponent(fu.linked_payment_entry)+'">Payment Entry · '
-        +esc(fu.linked_payment_entry)+'</a>';
+
+    /* payment detail — name · account · amount · date */
+    if(fu.linked_payment_entry||fu.payment_account||fu.payment_ref||fu.payment_date){
+      h+='<div class="ix-fu-pay">';
+      if(fu.linked_payment_entry)
+        h+='<a class="ix-fu-pe" target="_blank" href="/app/payment-entry/'
+          +encodeURIComponent(fu.linked_payment_entry)+'">Payment Entry · '
+          +esc(fu.linked_payment_entry)+'</a>';
+      if(fu.payment_account) h+=mr("Account",fu.payment_account);
+      if(fu.payment_ref) h+=mr("Ref",fu.payment_ref);
+      if(fu.payment_date) h+=mr("Date",fmtDate(fu.payment_date));
+      h+='</div>';
     }
-    if(fu.status==="Open"||fu.status==="Escalated"){
+
+    if(active && S.payForm===fu.name){
+      h+=payFormHtml(fu);
+    } else if(active){
       h+='<div class="ix-fu-btns">';
       if((fu.followup_type||"")==="Payment Entry"){
         h+='<button class="ix-btn" data-fu-find="'+esc(fu.name)+'">'
-          +(S.busy==="find:"+fu.name?"Searching…":"Find Payment Entry")+'</button>';
+          +(S.busy==="find:"+fu.name?"Searching…":"Find Payment Entry")+'</button>'
+          +'<button class="ix-btn" data-fu-manual="'+esc(fu.name)+'">Enter manually</button>';
       }
-      h+='<button class="ix-btn ok" data-fu-done="'+esc(fu.name)+'">Mark done</button>'
+      h+='<button class="ix-btn ok" data-fu-complete="'+esc(fu.name)+'">Mark Completed</button>'
         +'<button class="ix-btn ghost" data-fu-cancel="'+esc(fu.name)+'">Cancel</button>'
         +'</div>';
-      /* PE candidates */
+      /* PE candidates — name · account · amount · date · ref · mode */
       if(S.peCands && S.peCands.fu===fu.name){
         if(!S.peCands.list.length){
-          h+='<div class="ix-c-empty">No matching Payment Entry found — '
-            +'raise one in ERPNext, then Mark done.</div>';
+          h+='<div class="ix-c-empty">No matching Payment Entry — use '
+            +'"Enter manually", or raise one in ERPNext first.</div>';
         } else {
           h+='<div class="ix-pe-list">';
           S.peCands.list.forEach(function(pe){
@@ -476,11 +487,14 @@ frappe.ready(function () {
             h+='<div class="ix-pe"><div class="ix-pe-main">'
               +'<span class="ix-pe-name">'+esc(pe.name)+'</span>'
               +'<span class="ix-pe-amt">KES '+amt+'</span></div>'
-              +'<div class="ix-pe-sub">'+esc(pe.posting_date||"")
-              +(pe.reference_no?' · '+esc(pe.reference_no):'')
+              +'<div class="ix-pe-sub">'
+              +(pe.paid_to?esc(pe.paid_to)+' · ':'')
+              +esc(pe.posting_date||"")
+              +(pe.reference_no?' · ref '+esc(pe.reference_no):'')
+              +(pe.mode_of_payment?' · '+esc(pe.mode_of_payment):'')
               +(pe.docstatus===1?' · submitted':' · draft')+'</div>'
               +'<button class="ix-btn small" data-fu-link="'+esc(fu.name)
-              +'" data-pe="'+esc(pe.name)+'">Link &amp; close</button></div>';
+              +'" data-pe="'+esc(pe.name)+'">Link &amp; move to Pending Review</button></div>';
           });
           h+='</div>';
         }
@@ -488,6 +502,23 @@ frappe.ready(function () {
     }
     h+='</div>';
     return h;
+  }
+
+  function payFormHtml(fu){
+    return '<div class="ix-pay-form"><div class="ix-c-label">Enter payment manually</div>'
+      +'<label class="ix-fl">Payment / cheque ref</label>'
+      +'<input class="ix-fi" id="ix-pf-ref" value="'+esc(fu.payment_ref||"")+'">'
+      +'<label class="ix-fl">Bank / cash account</label>'
+      +'<input class="ix-fi" id="ix-pf-acct" value="'+esc(fu.payment_account||"")+'">'
+      +'<div class="ix-fl-row">'
+      +'<div><label class="ix-fl">Amount (KES)</label>'
+      +'<input class="ix-fi" id="ix-pf-amt" value="'+esc(fu.expected_amount||"")+'"></div>'
+      +'<div><label class="ix-fl">Date</label>'
+      +'<input class="ix-fi" type="date" id="ix-pf-date" value="'+esc(fu.payment_date||"")+'"></div>'
+      +'</div><div class="ix-fu-btns">'
+      +'<button class="ix-btn primary" data-pf-save="'+esc(fu.name)+'">'
+      +(S.busy==="resolve"?"Saving…":"Save → Pending Review")+'</button>'
+      +'<button class="ix-btn ghost" id="ix-pf-cancel">Cancel</button></div></div>';
   }
 
   function fuFormHtml(m){
@@ -547,7 +578,7 @@ frappe.ready(function () {
     ROOT.querySelectorAll(".ix-conv").forEach(function(b){
       b.addEventListener("click", function(){
         S.activeConv=b.getAttribute("data-conv"); S.activeMsg=null;
-        S.fuForm=null; S.peCands=null; pickActiveMsg();
+        S.fuForm=null; S.peCands=null; S.payForm=null; pickActiveMsg();
         S.mview="thread"; render();
       });
     });
@@ -557,14 +588,14 @@ frappe.ready(function () {
         var fu=S.followups.filter(function(f){return f.name===fuName;})[0];
         if(!fu) return;
         S.activeConv=fu.conversation; S.activeMsg=fu.message;
-        S.fuForm=null; S.peCands=null;
+        S.fuForm=null; S.peCands=null; S.payForm=null;
         S.mview="thread"; S.ctxOpen=true; render();
       });
     });
     ROOT.querySelectorAll(".ix-msg").forEach(function(a){
       a.addEventListener("click", function(){
         S.activeMsg=a.getAttribute("data-msg");
-        S.fuForm=null; S.peCands=null; S.ctxOpen=true; render();
+        S.fuForm=null; S.peCands=null; S.payForm=null; S.ctxOpen=true; render();
       });
     });
     var bk=document.getElementById("ix-back");
@@ -597,15 +628,39 @@ frappe.ready(function () {
     ROOT.querySelectorAll("[data-fu-find]").forEach(function(b){
       b.addEventListener("click", function(){ findPE(b.getAttribute("data-fu-find")); });
     });
-    ROOT.querySelectorAll("[data-fu-done]").forEach(function(b){
-      b.addEventListener("click", function(){ resolveFu(b.getAttribute("data-fu-done"),"Done"); });
+    ROOT.querySelectorAll("[data-fu-manual]").forEach(function(b){
+      b.addEventListener("click", function(){
+        S.payForm=b.getAttribute("data-fu-manual"); S.peCands=null; render();
+      });
+    });
+    ROOT.querySelectorAll("[data-fu-complete]").forEach(function(b){
+      b.addEventListener("click", function(){
+        resolveFu(b.getAttribute("data-fu-complete"),"Completed");
+      });
     });
     ROOT.querySelectorAll("[data-fu-cancel]").forEach(function(b){
       b.addEventListener("click", function(){ resolveFu(b.getAttribute("data-fu-cancel"),"Cancelled"); });
     });
     ROOT.querySelectorAll("[data-fu-link]").forEach(function(b){
       b.addEventListener("click", function(){
-        resolveFu(b.getAttribute("data-fu-link"),"Done",b.getAttribute("data-pe"));
+        var fuName=b.getAttribute("data-fu-link"), peName=b.getAttribute("data-pe");
+        var pe=((S.peCands&&S.peCands.list)||[]).filter(function(x){return x.name===peName;})[0]||{};
+        resolveFu(fuName,"Pending Review",{ payment_entry:peName,
+          payment_account:pe.paid_to, payment_ref:pe.reference_no,
+          payment_date:pe.posting_date });
+      });
+    });
+    var pfc=document.getElementById("ix-pf-cancel");
+    if(pfc) pfc.addEventListener("click", function(){ S.payForm=null; render(); });
+    ROOT.querySelectorAll("[data-pf-save]").forEach(function(b){
+      b.addEventListener("click", function(){
+        var fuName=b.getAttribute("data-pf-save");
+        var ref=(document.getElementById("ix-pf-ref")||{}).value||"";
+        var acct=(document.getElementById("ix-pf-acct")||{}).value||"";
+        var amt=(document.getElementById("ix-pf-amt")||{}).value||"";
+        var dt=(document.getElementById("ix-pf-date")||{}).value||"";
+        resolveFu(fuName,"Pending Review",{ payment_ref:ref, payment_account:acct,
+          expected_amount:(amt.replace(/[^0-9.]/g,"")||""), payment_date:dt });
       });
     });
   }
@@ -640,13 +695,15 @@ frappe.ready(function () {
       frappe.msgprint("Match failed: "+esc((e&&e.message)||""));
     });
   }
-  function resolveFu(fuName,status,pe){
+  function resolveFu(fuName,status,extra){
     if(S.busy) return;
     S.busy="resolve"; render();
     var args={ followup:fuName, status:status };
-    if(pe) args.payment_entry=pe;
+    if(extra){ for(var k in extra){
+      if(extra[k]!=null && extra[k]!=="") args[k]=extra[k];
+    }}
     call(FUP_API+"resolve_followup",args).then(function(){
-      S.busy=""; S.peCands=null; reloadFollowups();
+      S.busy=""; S.peCands=null; S.payForm=null; reloadFollowups();
     }).catch(function(e){
       S.busy=""; render();
       frappe.msgprint("Could not update the follow-up: "+esc((e&&e.message)||""));

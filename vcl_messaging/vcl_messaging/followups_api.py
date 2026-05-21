@@ -26,6 +26,10 @@ TELEGRAM_API = "https://api.telegram.org"
 DEFAULT_OWNER = "tanuj.haria@vimit.com"
 AMOUNT_TOLERANCE = 0.02  # +/- 2% when matching Payment Entry amounts
 
+# Statuses still "in flight" — escalated if past the deadline.
+ACTIVE_STATUSES = ["Pending", "Cheque Pending Collection", "Pending Review"]
+CLOSED_STATUSES = ["Completed", "Cancelled"]
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -44,8 +48,10 @@ def _default_user():
 
 @frappe.whitelist()
 def create_followup(message, action, due_date, followup_type="Payment Entry",
-                    customer=None, customer_text=None, expected_amount=None,
-                    assigned_to=None, escalate_to=None, notes=None):
+                    status="Pending", customer=None, customer_text=None,
+                    expected_amount=None, assigned_to=None, escalate_to=None,
+                    payment_account=None, payment_ref=None, payment_date=None,
+                    notes=None):
     """Raise a Follow-up against a VCL Message."""
     if not frappe.db.exists("VCL Message", message):
         frappe.throw(f"VCL Message {message} not found")
@@ -54,7 +60,7 @@ def create_followup(message, action, due_date, followup_type="Payment Entry",
     fu = frappe.get_doc({
         "doctype": "VCL Followup",
         "followup_type": followup_type or "Payment Entry",
-        "status": "Open",
+        "status": status or "Pending",
         "message": message,
         "customer": customer or None,
         "customer_text": (customer_text or None) if not customer else None,
@@ -63,6 +69,9 @@ def create_followup(message, action, due_date, followup_type="Payment Entry",
         "due_date": due_date,
         "assigned_to": assigned_to or _default_user(),
         "escalate_to": escalate_to or _default_user(),
+        "payment_account": payment_account or None,
+        "payment_ref": payment_ref or None,
+        "payment_date": payment_date or None,
         "source_summary": summary,
         "notes": notes or None,
     })
@@ -83,7 +92,8 @@ def get_followups(status=None):
         fields=[
             "name", "followup_type", "status", "message", "conversation",
             "customer", "customer_text", "expected_amount", "action", "due_date",
-            "assigned_to", "escalate_to", "linked_payment_entry", "notes",
+            "assigned_to", "escalate_to", "linked_payment_entry",
+            "payment_account", "payment_ref", "payment_date", "notes",
             "resolved_on", "escalated_on",
         ],
         order_by="creation desc",
@@ -111,7 +121,8 @@ def _match_payment_entries(fu):
             "docstatus": ["<", 2],
         },
         fields=["name", "paid_amount", "received_amount", "posting_date",
-                "reference_no", "docstatus"],
+                "reference_no", "reference_date", "paid_to", "mode_of_payment",
+                "docstatus"],
         order_by="posting_date desc",
         limit_page_length=25,
     )
@@ -126,16 +137,27 @@ def _match_payment_entries(fu):
 
 
 @frappe.whitelist()
-def resolve_followup(followup, status="Done", payment_entry=None, notes=None):
-    """Close a Follow-up — Done (optionally linking the Payment Entry) or
-    Cancelled."""
+def resolve_followup(followup, status="Completed", payment_entry=None,
+                     payment_account=None, payment_ref=None, payment_date=None,
+                     expected_amount=None, notes=None):
+    """Move a Follow-up along the pipeline. `status` is any of the 6 states.
+    Optionally link a Payment Entry and/or record the payment detail
+    (account / ref / date) — whether the PE was system-matched or keyed in."""
     fu = frappe.get_doc("VCL Followup", followup)
     fu.status = status
     if payment_entry:
         fu.linked_payment_entry = payment_entry
+    if payment_account:
+        fu.payment_account = payment_account
+    if payment_ref:
+        fu.payment_ref = payment_ref
+    if payment_date:
+        fu.payment_date = payment_date
+    if expected_amount is not None and str(expected_amount) != "":
+        fu.expected_amount = flt(expected_amount)
     if notes:
         fu.notes = notes
-    if status in ("Done", "Cancelled"):
+    if status in ("Completed", "Cancelled"):
         fu.resolved_on = now_datetime()
     fu.save(ignore_permissions=True)
     frappe.db.commit()
@@ -147,12 +169,13 @@ def resolve_followup(followup, status="Done", payment_entry=None, notes=None):
 # ---------------------------------------------------------------------------
 
 def escalate_followups():
-    """Any Follow-up still Open on/after its deadline: try once more to match
-    a Payment Entry — auto-resolve on a single submitted match, else escalate
-    to Telegram and flip status to Escalated."""
+    """Any active Follow-up (Pending / Cheque Pending Collection / Pending
+    Review) on/after its deadline: try once more to match a Payment Entry —
+    auto-resolve on a single submitted match, else escalate to Telegram and
+    flip status to Escalated."""
     rows = frappe.get_all(
         "VCL Followup",
-        filters={"status": "Open", "due_date": ["<=", today()]},
+        filters={"status": ["in", ACTIVE_STATUSES], "due_date": ["<=", today()]},
         fields=["name"],
     )
     for r in rows:
@@ -172,8 +195,12 @@ def _process_overdue(name):
 
     if len(submitted) == 1:
         # The Payment Entry was raised — nobody closed the follow-up. Do it.
-        fu.status = "Done"
-        fu.linked_payment_entry = submitted[0]["name"]
+        pe = submitted[0]
+        fu.status = "Completed"
+        fu.linked_payment_entry = pe["name"]
+        fu.payment_account = pe.get("paid_to")
+        fu.payment_ref = pe.get("reference_no")
+        fu.payment_date = pe.get("posting_date")
         fu.resolved_on = now_datetime()
         fu.notes = (fu.notes or "") + "\n[auto-resolved by escalation cron]"
         fu.save(ignore_permissions=True)
@@ -209,7 +236,7 @@ def _escalate_telegram(fu, candidates):
     ]
     if fu.expected_amount:
         lines.append(f"Amount: KES {flt(fu.expected_amount):,.0f}")
-    lines.append(f"Deadline {fu.due_date} — still Open.")
+    lines.append(f"Deadline {fu.due_date} — still {fu.status}.")
     if candidates:
         lines.append(f"{len(candidates)} possible Payment Entry match(es) "
                      f"— confirm in the inbox: {fu.name}")
