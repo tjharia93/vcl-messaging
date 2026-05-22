@@ -561,7 +561,7 @@ def _classify_media(message_name, config_name):
             followups_api.create_followup(
                 message=message_name,
                 action=", ".join(bits) + ".",
-                due_date=str(frappe.utils.add_days(frappe.utils.today(), 4)),
+                due_date=_due_in_working_days(2),
                 followup_type="Payment Entry", status="Pending",
                 customer=customer,
                 customer_text=(None if customer else v.get("payer")),
@@ -798,7 +798,7 @@ def _autocreate_followup_from_verdict(message_name, verdict):
         followups_api.create_followup(
             message=message_name,
             action=action[:500],
-            due_date=str(frappe.utils.add_days(frappe.utils.today(), 4)),
+            due_date=_due_in_working_days(2),
             followup_type=futype,
             status="Pending",
             customer=customer,
@@ -1036,7 +1036,7 @@ def _apply_allocation(message_name, result, config_name):
             followups_api.create_followup(
                 message=message_name,
                 action=fudef.get("action") or "Follow up on this payment.",
-                due_date=str(frappe.utils.add_days(frappe.utils.today(), 4)),
+                due_date=_due_in_working_days(2),
                 followup_type=fudef.get("type", "Payment Entry"),
                 status=fudef.get("status", "Pending"),
                 customer=customer,
@@ -1062,6 +1062,20 @@ def _apply_allocation(message_name, result, config_name):
 # ---------------------------------------------------------------------------
 # Utilities
 # ---------------------------------------------------------------------------
+
+def _due_in_working_days(n=2):
+    """A deadline n working days from today — skips Saturday and Sunday.
+    Payment / order follow-ups use this as the monitor window: a payment
+    reported on a Friday must not escalate over the weekend."""
+    from datetime import timedelta
+    d = frappe.utils.getdate(frappe.utils.today())
+    added = 0
+    while added < n:
+        d += timedelta(days=1)
+        if d.weekday() < 5:          # 0-4 = Mon-Fri
+            added += 1
+    return str(d)
+
 
 def _ts_to_datetime(ts):
     if not ts:

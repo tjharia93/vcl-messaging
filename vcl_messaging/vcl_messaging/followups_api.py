@@ -25,8 +25,12 @@ from frappe.utils.password import get_decrypted_password
 from vcl_messaging.vcl_messaging.whatsapp_pa_api import _first_pa_config
 
 TELEGRAM_API = "https://api.telegram.org"
+SLACK_API = "https://slack.com/api"
 DEFAULT_OWNER = "tanuj.haria@vimit.com"
 AMOUNT_TOLERANCE = 0.02  # +/- 2% when matching Payment Entry amounts
+
+# Overdue-payment escalations post to #vcl-finance on Slack.
+FINANCE_SLACK_CHANNEL = "C0B4V5HE75K"
 
 # Statuses still "in flight" — escalated if past the deadline.
 ACTIVE_STATUSES = ["Pending", "Cheque Pending Collection", "Pending Review"]
@@ -229,7 +233,62 @@ def _process_overdue(name):
     fu.escalated_on = now_datetime()
     fu.save(ignore_permissions=True)
     frappe.db.commit()
-    _escalate_telegram(fu, candidates)
+    # Spec (Tanuj, 2026-05-22): flag overdue payments to #vcl-finance on Slack.
+    # Telegram is the fallback if Slack is not configured / the post fails.
+    if not _escalate_slack(fu, candidates):
+        _escalate_telegram(fu, candidates)
+
+
+def _escalation_lines(fu, candidates):
+    """Shared body for the Slack / Telegram escalation messages."""
+    who = fu.customer or fu.customer_text or "(customer unknown)"
+    lines = [
+        f"Overdue {fu.followup_type} — not yet posted / tagged in ERPNext.",
+        fu.action or "",
+        f"Customer: {who}",
+    ]
+    if fu.expected_amount:
+        lines.append(f"Amount: KES {flt(fu.expected_amount):,.0f}")
+    lines.append(f"Deadline {fu.due_date} — still {fu.status}.")
+    if candidates:
+        lines.append(f"{len(candidates)} possible Payment Entry match(es) "
+                     f"— confirm in the inbox ({fu.name}).")
+    else:
+        lines.append(f"No Payment Entry found yet — please check ({fu.name}).")
+    return [l for l in lines if l]
+
+
+def _slack_finance_token():
+    """Bot token from the first enabled Slack channel config, or None."""
+    rows = frappe.get_all(
+        "VCL Channel Config",
+        filters={"channel_type": "Slack", "enabled": 1},
+        fields=["slack_bot_token"], limit=1,
+    )
+    return (rows[0].get("slack_bot_token") if rows else None) or None
+
+
+def _escalate_slack(fu, candidates):
+    """Post an overdue-payment flag to #vcl-finance. Returns True if it posted,
+    False if Slack is not configured or the call failed — the caller then
+    falls back to Telegram so the flag is never lost."""
+    token = _slack_finance_token()
+    if not token:
+        return False
+    text = "*Overdue payment*\n" + "\n".join(_escalation_lines(fu, candidates))
+    try:
+        resp = requests.post(
+            f"{SLACK_API}/chat.postMessage",
+            headers={"Authorization": f"Bearer {token}",
+                     "Content-Type": "application/json"},
+            json={"channel": FINANCE_SLACK_CHANNEL, "text": text},
+            timeout=10,
+        )
+        return bool(resp.json().get("ok"))
+    except Exception as e:
+        frappe.log_error(title="VCL Followup Slack escalation failed",
+                         message=str(e))
+        return False
 
 
 def _escalate_telegram(fu, candidates):
@@ -246,25 +305,11 @@ def _escalate_telegram(fu, candidates):
     if not token:
         return
 
-    who = fu.customer or fu.customer_text or "(customer unknown)"
-    lines = [
-        f"OVERDUE FOLLOW-UP · {fu.followup_type}",
-        fu.action or "",
-        f"Customer: {who}",
-    ]
-    if fu.expected_amount:
-        lines.append(f"Amount: KES {flt(fu.expected_amount):,.0f}")
-    lines.append(f"Deadline {fu.due_date} — still {fu.status}.")
-    if candidates:
-        lines.append(f"{len(candidates)} possible Payment Entry match(es) "
-                     f"— confirm in the inbox: {fu.name}")
-    else:
-        lines.append(f"No Payment Entry found. Please check. ({fu.name})")
-
+    text = "OVERDUE PAYMENT\n" + "\n".join(_escalation_lines(fu, candidates))
     try:
         requests.post(
             f"{TELEGRAM_API}/bot{token}/sendMessage",
-            json={"chat_id": chat_id, "text": "\n".join([l for l in lines if l]),
+            json={"chat_id": chat_id, "text": text,
                   "disable_web_page_preview": True},
             timeout=5,
         )
