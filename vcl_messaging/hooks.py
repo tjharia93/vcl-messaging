@@ -5,6 +5,15 @@ app_description = "Unified inbox for VCL — WhatsApp (Cloud API + Baileys PA), 
 app_email = "tanuj.haria@vimit.com"
 app_license = "MIT"
 
+# Custom Fields shipped with the app — kept under fixtures/ so messaging
+# doctype changes live in this repo, not as ad-hoc Custom Fields on the
+# live site. Re-export with: bench --site <site> export-fixtures
+fixtures = [
+    {"dt": "Custom Field", "filters": [["name", "in", [
+        "VCL Message-custom_inbox_tag",
+    ]]]},
+]
+
 doc_events = {
     "Communication": {
         "after_insert": "vcl_messaging.vcl_messaging.email_api.on_communication_insert",

@@ -1,0 +1,26 @@
+[
+ {
+  "doctype": "Custom Field",
+  "name": "VCL Message-custom_inbox_tag",
+  "dt": "VCL Message",
+  "module": "VCL Messaging",
+  "label": "Inbox Tag",
+  "fieldname": "custom_inbox_tag",
+  "fieldtype": "Data",
+  "insert_after": "inbox_ignored",
+  "description": "Free-text tag set from the intranet base Inbox.",
+  "is_system_generated": 0,
+  "translatable": 0,
+  "length": 0,
+  "reqd": 0,
+  "unique": 0,
+  "read_only": 0,
+  "hidden": 0,
+  "no_copy": 0,
+  "in_list_view": 0,
+  "in_standard_filter": 0,
+  "in_global_search": 0,
+  "print_hide": 0,
+  "docstatus": 0
+ }
+]
