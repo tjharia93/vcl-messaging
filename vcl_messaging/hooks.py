@@ -11,6 +11,7 @@ app_license = "MIT"
 fixtures = [
     {"dt": "Custom Field", "filters": [["name", "in", [
         "VCL Message-custom_inbox_tag",
+        "VCL Message-custom_inbox_done",
     ]]]},
 ]
 
