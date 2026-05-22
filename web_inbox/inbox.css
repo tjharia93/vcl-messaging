@@ -401,3 +401,14 @@ textarea.ix-fi{ resize:vertical; line-height:1.45; }
   font-weight:600; }
 .ix-pe-sub{ font-size:10.5px; color:var(--muted); margin-top:3px;
   font-family:'IBM Plex Mono',monospace; }
+
+/* thread window — "show whole conversation" affordance */
+.ix-thread-more{
+  display:block; width:100%; margin:6px 0; padding:7px 10px;
+  border:1px dashed var(--line); border-radius:8px; background:transparent;
+  cursor:pointer; text-align:center; letter-spacing:.02em;
+  font-family:'IBM Plex Mono',monospace; font-size:10.5px; font-weight:600;
+  color:var(--muted);
+}
+.ix-thread-more:hover{ background:var(--blue-soft); color:var(--blue);
+  border-color:var(--blue); }

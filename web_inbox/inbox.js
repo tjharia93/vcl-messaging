@@ -25,7 +25,7 @@ frappe.ready(function () {
             followups:[], fuByMsg:{},
             activeConv:null, activeMsg:null, view:"open", mview:"list",
             ctxOpen:false, tier1Missing:false, fuForm:null, peCands:null,
-            payForm:null, scrollThreadBottom:false, busy:"" };
+            payForm:null, threadAll:false, scrollThreadBottom:false, busy:"" };
 
   /* ---------- helpers ---------- */
   function esc(s){ return (s==null?"":String(s))
@@ -229,7 +229,12 @@ frappe.ready(function () {
     if(nX && snap.ctx!=null) nX.scrollTop=snap.ctx;
     var nM=ROOT.querySelector(".ix-msgs");
     if(nM){
-      if(S.scrollThreadBottom){ nM.scrollTop=nM.scrollHeight; S.scrollThreadBottom=false; }
+      if(S.scrollThreadBottom){
+        var onM=nM.querySelector(".ix-msg.on");
+        if(onM && onM.scrollIntoView){ onM.scrollIntoView({block:"center"}); }
+        else { nM.scrollTop=nM.scrollHeight; }
+        S.scrollThreadBottom=false;
+      }
       else if(snap.msgs!=null){ nM.scrollTop=snap.msgs; }
     }
   }
@@ -348,7 +353,23 @@ frappe.ready(function () {
       +'<span class="ix-th-sub">'+x.msgs.length+' messages · '
       +x.untriaged+' need attention</span></div></header>';
     h+='<div class="ix-msgs">';
-    x.msgs.forEach(function(m){ h+=msgBubble(m); });
+    // Window the thread to the clicked message + 4 each side — opening a
+    // conversation must not dump the whole group history into the pane.
+    var ms=x.msgs, WIN=4, ai=-1, ti;
+    for(ti=0;ti<ms.length;ti++){ if(ms[ti].name===S.activeMsg){ ai=ti; break; } }
+    var lo=0, hi=ms.length;
+    if(!S.threadAll && ai>=0 && ms.length>WIN*2+1){
+      lo=Math.max(0,ai-WIN); hi=Math.min(ms.length,ai+WIN+1);
+    }
+    if(lo>0){
+      h+='<button class="ix-thread-more" id="ix-thread-earlier">&#8593; '+lo
+        +' earlier message'+(lo>1?'s':'')+' — show whole conversation</button>';
+    }
+    ms.slice(lo,hi).forEach(function(m){ h+=msgBubble(m); });
+    if(hi<ms.length){
+      h+='<button class="ix-thread-more" id="ix-thread-later">&#8595; '+(ms.length-hi)
+        +' more message'+((ms.length-hi)>1?'s':'')+' — show whole conversation</button>';
+    }
     h+='</div>';
     h+='<footer class="ix-composer">'
       +'<input class="ix-compose-in" placeholder="Reply to '+esc(c.whatsapp_group_name||"")+'" disabled>'
@@ -637,7 +658,7 @@ frappe.ready(function () {
         var m=S.msgs.filter(function(x){ return x.name===b.getAttribute("data-msg"); })[0];
         if(!m) return;
         S.activeConv=m.conversation; S.activeMsg=m.name;
-        S.fuForm=null; S.peCands=null; S.payForm=null;
+        S.fuForm=null; S.peCands=null; S.payForm=null; S.threadAll=false;
         S.mview="thread"; S.ctxOpen=true; S.scrollThreadBottom=true; render();
       });
     });
@@ -647,7 +668,7 @@ frappe.ready(function () {
           return f.name===b.getAttribute("data-fu-open"); })[0];
         if(!fu) return;
         S.activeConv=fu.conversation; S.activeMsg=fu.message;
-        S.fuForm=null; S.peCands=null; S.payForm=null;
+        S.fuForm=null; S.peCands=null; S.payForm=null; S.threadAll=false;
         S.mview="thread"; S.ctxOpen=true; S.scrollThreadBottom=true; render();
       });
     });
@@ -661,6 +682,10 @@ frappe.ready(function () {
     if(bk) bk.addEventListener("click", function(){ S.mview="list"; render(); });
     var cc=document.getElementById("ix-ctx-close");
     if(cc) cc.addEventListener("click", function(){ S.ctxOpen=false; render(); });
+    var tEarlier=document.getElementById("ix-thread-earlier");
+    if(tEarlier) tEarlier.addEventListener("click", function(){ S.threadAll=true; render(); });
+    var tLater=document.getElementById("ix-thread-later");
+    if(tLater) tLater.addEventListener("click", function(){ S.threadAll=true; render(); });
 
     /* follow-up: add */
     var add=document.getElementById("ix-fu-add");
