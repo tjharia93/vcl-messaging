@@ -12,6 +12,7 @@ fixtures = [
     {"dt": "Custom Field", "filters": [["name", "in", [
         "VCL Message-custom_inbox_tag",
         "VCL Message-custom_inbox_done",
+        "VCL Message-custom_inbox_note",
     ]]]},
 ]
 
