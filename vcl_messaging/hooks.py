@@ -13,6 +13,7 @@ fixtures = [
         "VCL Message-custom_inbox_tag",
         "VCL Message-custom_inbox_done",
         "VCL Message-custom_inbox_note",
+        "VCL Inbox Tag-custom_creates_control_item",
     ]]]},
 ]
 
