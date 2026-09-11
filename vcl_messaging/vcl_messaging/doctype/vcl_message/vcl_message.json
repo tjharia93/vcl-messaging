@@ -1,232 +1,282 @@
 {
-  "name": "VCL Message",
-  "module": "VCL Messaging",
-  "doctype": "DocType",
-  "document_type": "Document",
-  "editable_grid": 1,
-  "engine": "InnoDB",
-  "field_order": [
-    "conversation",
-    "direction",
-    "message_type",
-    "status",
-    "column_break_1",
-    "sent_at",
-    "delivered_at",
-    "read_at",
-    "section_content",
-    "content",
-    "media_url",
-    "media_mime_type",
-    "ocr_text",
-    "section_ai",
-    "ai_priority",
-    "ai_category",
-    "ai_kind",
-    "ai_summary",
-    "ai_customer_mentions",
-    "ai_action_items",
-    "ai_mentions_tanuj",
-    "ai_processed_at",
-    "inbox_ignored",
-    "section_meta",
-    "external_id",
-    "sender_name",
-    "error_message"
-  ],
-  "fields": [
-    {
-      "fieldname": "conversation",
-      "fieldtype": "Link",
-      "label": "Conversation",
-      "options": "VCL Conversation",
-      "reqd": 1,
-      "in_list_view": 1
-    },
-    {
-      "fieldname": "direction",
-      "fieldtype": "Select",
-      "label": "Direction",
-      "options": "Inbound\nOutbound",
-      "reqd": 1,
-      "in_list_view": 1,
-      "in_standard_filter": 1
-    },
-    {
-      "fieldname": "message_type",
-      "fieldtype": "Select",
-      "label": "Message Type",
-      "options": "text\nimage\nvideo\naudio\ndocument\nlocation\ncontacts\ntemplate\ninteractive",
-      "default": "text",
-      "in_list_view": 1
-    },
-    {
-      "fieldname": "status",
-      "fieldtype": "Select",
-      "label": "Status",
-      "options": "pending\nsent\ndelivered\nread\nfailed",
-      "default": "pending",
-      "in_list_view": 1
-    },
-    {
-      "fieldname": "column_break_1",
-      "fieldtype": "Column Break"
-    },
-    {
-      "fieldname": "sent_at",
-      "fieldtype": "Datetime",
-      "label": "Sent At"
-    },
-    {
-      "fieldname": "delivered_at",
-      "fieldtype": "Datetime",
-      "label": "Delivered At"
-    },
-    {
-      "fieldname": "read_at",
-      "fieldtype": "Datetime",
-      "label": "Read At"
-    },
-    {
-      "fieldname": "section_content",
-      "fieldtype": "Section Break",
-      "label": "Content"
-    },
-    {
-      "fieldname": "content",
-      "fieldtype": "Long Text",
-      "label": "Content",
-      "in_list_view": 1
-    },
-    {
-      "fieldname": "media_url",
-      "fieldtype": "Data",
-      "label": "Media URL"
-    },
-    {
-      "fieldname": "media_mime_type",
-      "fieldtype": "Data",
-      "label": "Media MIME Type"
-    },
-    {
-      "fieldname": "ocr_text",
-      "fieldtype": "Long Text",
-      "label": "OCR Text",
-      "description": "Text extracted from the media by Tesseract / pdftotext"
-    },
-    {
-      "fieldname": "section_ai",
-      "fieldtype": "Section Break",
-      "label": "AI Read",
-      "collapsible": 1
-    },
-    {
-      "fieldname": "ai_priority",
-      "fieldtype": "Select",
-      "label": "AI Priority",
-      "options": "\nLOW\nMED\nHIGH\nCRIT",
-      "description": "Tier 1 classifier priority for text messages",
-      "in_list_view": 1,
-      "in_standard_filter": 1
-    },
-    {
-      "fieldname": "ai_category",
-      "fieldtype": "Select",
-      "label": "AI Category",
-      "options": "\npayment\npurchase_order\nsales_order\ninquiry\nsales_status\nsupplier_update\ncomplaint\njob_update\nops_chatter\npersonal\nother",
-      "description": "Tier 1 classifier category for text messages",
-      "in_list_view": 1,
-      "in_standard_filter": 1
-    },
-    {
-      "fieldname": "ai_kind",
-      "fieldtype": "Data",
-      "label": "AI Kind",
-      "description": "Claude Vision classification: pi, ci, bl, label_artwork, job_card_photo, product_photo, screenshot, handwritten_note, other",
-      "in_standard_filter": 1
-    },
-    {
-      "fieldname": "ai_summary",
-      "fieldtype": "Small Text",
-      "label": "AI Summary",
-      "description": "One-line description from Claude (Vision for images, Haiku for text)"
-    },
-    {
-      "fieldname": "ai_customer_mentions",
-      "fieldtype": "Small Text",
-      "label": "AI Customer Mentions",
-      "description": "JSON array of customer / company names Claude detected"
-    },
-    {
-      "fieldname": "ai_action_items",
-      "fieldtype": "Small Text",
-      "label": "AI Action Items",
-      "description": "JSON array of concrete next actions Claude detected"
-    },
-    {
-      "fieldname": "ai_mentions_tanuj",
-      "fieldtype": "Check",
-      "label": "AI Mentions Tanuj",
-      "description": "Claude detected Tanuj is directly addressed"
-    },
-    {
-      "fieldname": "ai_processed_at",
-      "fieldtype": "Datetime",
-      "label": "AI Processed At"
-    },
-    {
-      "fieldname": "inbox_ignored",
-      "fieldtype": "Check",
-      "label": "Ignored in Inbox",
-      "description": "Triaged as no-action — hidden from the Inbox view",
-      "in_standard_filter": 1
-    },
-    {
-      "fieldname": "section_meta",
-      "fieldtype": "Section Break",
-      "label": "Metadata"
-    },
-    {
-      "fieldname": "external_id",
-      "fieldtype": "Data",
-      "label": "External Message ID",
-      "description": "Message ID from WhatsApp/provider",
-      "unique": 1
-    },
-    {
-      "fieldname": "sender_name",
-      "fieldtype": "Data",
-      "label": "Sender Name"
-    },
-    {
-      "fieldname": "error_message",
-      "fieldtype": "Small Text",
-      "label": "Error Message"
-    }
-  ],
-  "index_web_pages_for_search": 0,
-  "is_single": 0,
-  "istable": 0,
-  "modified": "2026-05-01 00:00:00.000000",
-  "naming_rule": "Expression",
-  "autoname": "MSG-.#####",
-  "owner": "Administrator",
-  "permissions": [
-    {
-      "role": "System Manager",
-      "read": 1,
-      "write": 1,
-      "create": 1,
-      "delete": 1
-    },
-    {
-      "role": "Sales User",
-      "read": 1,
-      "write": 1,
-      "create": 1
-    }
-  ],
-  "sort_field": "creation",
-  "sort_order": "DESC",
-  "track_changes": 1
+ "name": "VCL Message",
+ "module": "VCL Messaging",
+ "doctype": "DocType",
+ "document_type": "Document",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "conversation",
+  "direction",
+  "message_type",
+  "status",
+  "column_break_1",
+  "sent_at",
+  "delivered_at",
+  "read_at",
+  "section_content",
+  "content",
+  "media_url",
+  "media_mime_type",
+  "ocr_text",
+  "section_ai",
+  "ai_priority",
+  "ai_category",
+  "ai_kind",
+  "ai_summary",
+  "ai_customer_mentions",
+  "ai_action_items",
+  "ai_mentions_tanuj",
+  "ai_processed_at",
+  "inbox_ignored",
+  "section_meta",
+  "external_id",
+  "sender_name",
+  "error_message",
+  "section_review",
+  "human_confirmed",
+  "human_category",
+  "col_break_review",
+  "human_priority",
+  "human_reviewed_by",
+  "human_reviewed_at"
+ ],
+ "fields": [
+  {
+   "fieldname": "conversation",
+   "fieldtype": "Link",
+   "label": "Conversation",
+   "options": "VCL Conversation",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "direction",
+   "fieldtype": "Select",
+   "label": "Direction",
+   "options": "Inbound\nOutbound",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "message_type",
+   "fieldtype": "Select",
+   "label": "Message Type",
+   "options": "text\nimage\nvideo\naudio\ndocument\nlocation\ncontacts\ntemplate\ninteractive",
+   "default": "text",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "pending\nsent\ndelivered\nread\nfailed",
+   "default": "pending",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "sent_at",
+   "fieldtype": "Datetime",
+   "label": "Sent At"
+  },
+  {
+   "fieldname": "delivered_at",
+   "fieldtype": "Datetime",
+   "label": "Delivered At"
+  },
+  {
+   "fieldname": "read_at",
+   "fieldtype": "Datetime",
+   "label": "Read At"
+  },
+  {
+   "fieldname": "section_content",
+   "fieldtype": "Section Break",
+   "label": "Content"
+  },
+  {
+   "fieldname": "content",
+   "fieldtype": "Long Text",
+   "label": "Content",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "media_url",
+   "fieldtype": "Data",
+   "label": "Media URL"
+  },
+  {
+   "fieldname": "media_mime_type",
+   "fieldtype": "Data",
+   "label": "Media MIME Type"
+  },
+  {
+   "fieldname": "ocr_text",
+   "fieldtype": "Long Text",
+   "label": "OCR Text",
+   "description": "Text extracted from the media by Tesseract / pdftotext"
+  },
+  {
+   "fieldname": "section_ai",
+   "fieldtype": "Section Break",
+   "label": "AI Read",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "ai_priority",
+   "fieldtype": "Select",
+   "label": "AI Priority",
+   "options": "\nLOW\nMED\nHIGH\nCRIT",
+   "description": "Tier 1 classifier priority for text messages",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "ai_category",
+   "fieldtype": "Select",
+   "label": "AI Category",
+   "options": "\npayment\npurchase_order\nsales_order\ninquiry\nsales_status\nsupplier_update\ncomplaint\njob_update\nops_chatter\npersonal\nother",
+   "description": "Tier 1 classifier category for text messages",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "ai_kind",
+   "fieldtype": "Data",
+   "label": "AI Kind",
+   "description": "Claude Vision classification: pi, ci, bl, label_artwork, job_card_photo, product_photo, screenshot, handwritten_note, other",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "ai_summary",
+   "fieldtype": "Small Text",
+   "label": "AI Summary",
+   "description": "One-line description from Claude (Vision for images, Haiku for text)"
+  },
+  {
+   "fieldname": "ai_customer_mentions",
+   "fieldtype": "Small Text",
+   "label": "AI Customer Mentions",
+   "description": "JSON array of customer / company names Claude detected"
+  },
+  {
+   "fieldname": "ai_action_items",
+   "fieldtype": "Small Text",
+   "label": "AI Action Items",
+   "description": "JSON array of concrete next actions Claude detected"
+  },
+  {
+   "fieldname": "ai_mentions_tanuj",
+   "fieldtype": "Check",
+   "label": "AI Mentions Tanuj",
+   "description": "Claude detected Tanuj is directly addressed"
+  },
+  {
+   "fieldname": "ai_processed_at",
+   "fieldtype": "Datetime",
+   "label": "AI Processed At"
+  },
+  {
+   "fieldname": "inbox_ignored",
+   "fieldtype": "Check",
+   "label": "Ignored in Inbox",
+   "description": "Triaged as no-action \u2014 hidden from the Inbox view",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "section_meta",
+   "fieldtype": "Section Break",
+   "label": "Metadata"
+  },
+  {
+   "fieldname": "external_id",
+   "fieldtype": "Data",
+   "label": "External Message ID",
+   "description": "Message ID from WhatsApp/provider",
+   "unique": 1
+  },
+  {
+   "fieldname": "sender_name",
+   "fieldtype": "Data",
+   "label": "Sender Name"
+  },
+  {
+   "fieldname": "error_message",
+   "fieldtype": "Small Text",
+   "label": "Error Message"
+  },
+  {
+   "fieldname": "section_review",
+   "fieldtype": "Section Break",
+   "label": "Human Review"
+  },
+  {
+   "fieldname": "human_confirmed",
+   "fieldtype": "Check",
+   "label": "Classification Confirmed",
+   "default": "0",
+   "description": "A person read this and agreed with the classifier. Distinct from correcting it."
+  },
+  {
+   "fieldname": "human_category",
+   "fieldtype": "Select",
+   "label": "Category (corrected)",
+   "options": "\npayment\npurchase_order\nsales_order\ninquiry\nsales_status\nsupplier_update\ncomplaint\njob_update\nops_chatter\npersonal\nother",
+   "description": "Set only when a person disagrees with ai_category. ai_category is never overwritten \u2014 the disagreement is the signal."
+  },
+  {
+   "fieldname": "col_break_review",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "human_priority",
+   "fieldtype": "Select",
+   "label": "Priority (corrected)",
+   "options": "\nLOW\nMED\nHIGH\nCRIT",
+   "description": "Set only when a person disagrees with ai_priority."
+  },
+  {
+   "fieldname": "human_reviewed_by",
+   "fieldtype": "Link",
+   "label": "Reviewed By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "human_reviewed_at",
+   "fieldtype": "Datetime",
+   "label": "Reviewed On",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "is_single": 0,
+ "istable": 0,
+ "modified": "2026-05-01 00:00:00.000000",
+ "naming_rule": "Expression",
+ "autoname": "MSG-.#####",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  },
+  {
+   "role": "Sales User",
+   "read": 1,
+   "write": 1,
+   "create": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "track_changes": 1
 }
