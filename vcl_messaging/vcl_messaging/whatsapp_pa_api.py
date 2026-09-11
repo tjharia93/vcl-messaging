@@ -48,9 +48,44 @@ CATEGORY_TO_FUTYPE = {
     "sales_order": "Sales Order",
 }
 
+STREAM_LABELS = {
+    "payment": "Finance",
+    "purchase_order": "Sales Orders",
+    "sales_order": "Sales Orders",
+    "inquiry": "Sales Desk",
+    "sales_status": "Sales Desk",
+    "supplier_update": "Procurement",
+    "complaint": "Customer Escalations",
+    "job_update": "Production",
+    "ops_chatter": "Operations",
+    "personal": "Personal",
+    "other": "Inbox Review",
+}
+
 
 def _futype_for_category(category):
     return CATEGORY_TO_FUTYPE.get(category, "General")
+
+
+def _stream_for_category(category):
+    return STREAM_LABELS.get((category or "other").lower(), "Inbox Review")
+
+
+PAYMENT_MEDIA_KINDS = {"cheque", "bank_advice", "bank_voucher", "pi", "ci"}
+
+
+def _category_for_kind(kind):
+    return "payment" if (kind or "").lower() in PAYMENT_MEDIA_KINDS else "other"
+
+
+def _route_line(category=None, kind=None):
+    """Human-readable route shown in Telegram so alerts state where they landed."""
+    category = (category or _category_for_kind(kind) or "other").lower()
+    stream = _stream_for_category(category)
+    path = _futype_for_category(category)
+    if kind:
+        return f"Route: {stream} -> {path} ({kind})"
+    return f"Route: {stream} -> {path}"
 
 
 # ---------------------------------------------------------------------------
@@ -330,6 +365,7 @@ def _send_telegram_alert(payload, conv_name, msg_name, config):
 
     text = (
         f"WhatsApp · {group_label}\n"
+        f"{_route_line()}\n"
         f"{sender}: {body[:400]}"
     )
 
@@ -703,6 +739,7 @@ def _send_vision_alert(msg, conv, summary, kind, config):
 
     text = (
         f"WhatsApp · {group_label}\n"
+        f"{_route_line(kind=kind)}\n"
         f"{sender}: [{icon} · {kind}]\n"
         f"{summary or '(no summary)'}"
     )
@@ -850,7 +887,13 @@ def _ask_claude_text(body, group_name, sender_name, context, api_key):
         '  "mentions_tanuj": true | false\n'
         "}\n\n"
         "Category guidance — the group a message is in does NOT decide its "
-        "category; judge each message on its own content:\n"
+        "category; judge each message on its own content. One exception, and it "
+        "is about INTENT rather than subject: the same order is often posted "
+        "twice — once as a commercial fact ('customer X has ordered N cartons') "
+        "and once as an instruction to the floor ('this order is in, get ready "
+        "to run it'). The commercial report is sales_order. The instruction to "
+        "produce is job_update, even when it repeats the order wording verbatim. "
+        "Ask what the sender WANTS to happen: a sale recorded, or work started.\n"
         "- payment: ANY money movement or settlement — cheque numbers, M-Pesa "
         "codes, RTGS/EFT, bank deposits, 'paid', 'cleared', 'deposited', amounts "
         "settled against an invoice or LPO. If money has moved, choose payment.\n"
@@ -864,7 +907,9 @@ def _ask_claude_text(body, group_name, sender_name, context, api_key):
         "- supplier_update: a supplier message — deliveries, samples, proforma, "
         "pricing.\n"
         "- complaint: quality issue, dispute, dissatisfaction.\n"
-        "- job_update: production-floor / job-card progress.\n"
+        "- job_update: production-floor / job-card progress, AND work being "
+        "handed to the floor — an order released to production, a job to "
+        "prepare for, a run to start, materials to stage.\n"
         "- ops_chatter: logistics & internal coordination, no money or order.\n"
         "- personal: greetings, personal notes, attendance.\n"
         "- other: anything else.\n\n"
@@ -957,6 +1002,7 @@ def _send_text_alert(msg, conv, verdict, config):
     if not verdict:
         text = (
             f"WhatsApp · {group_label}  [unclassified]\n"
+            f"{_route_line()}\n"
             f"{sender}: {(msg.content or '')[:400]}"
         )
     else:
@@ -972,6 +1018,7 @@ def _send_text_alert(msg, conv, verdict, config):
         summary = verdict.get("summary") or (msg.content or "")[:200]
         text = (
             f"WhatsApp · {group_label}  [{priority} · {category}]\n"
+            f"{_route_line(category)}\n"
             f"{sender}: {summary}"
         )
         actions = verdict.get("action_items") or []
