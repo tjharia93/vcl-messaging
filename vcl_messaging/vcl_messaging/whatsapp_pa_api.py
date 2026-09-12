@@ -112,8 +112,13 @@ def record_message():
           "sender_name": "John Doe",
           "message_type": "text",
           "body": "5k assorted labels by Thursday please",
-          "media": null
+          "media": null,
+          "from_me": false
         }
+
+    `from_me` marks a message sent from the PA's own account (Tanuj's phone,
+    which the PA is a linked device on). Those are stored Outbound. Absent or
+    false behaves exactly as before, so an older listener is unaffected.
     """
     request = frappe.local.request
     if request.method != "POST":
@@ -203,10 +208,16 @@ def _ingest(payload, config):
     }:
         msg_type = "text"
 
+    # The PA is a linked device on Tanuj's own WhatsApp account, so messages he
+    # types on his phone arrive here flagged `from_me`. Filing those as Inbound
+    # would show him messaging himself and would feed his own words back into the
+    # classifier as if a customer had sent them.
+    from_me = bool(payload.get("from_me"))
+
     msg = frappe.get_doc({
         "doctype": "VCL Message",
         "conversation": conv_name,
-        "direction": "Inbound",
+        "direction": "Outbound" if from_me else "Inbound",
         "message_type": msg_type,
         "status": "delivered",
         "content": body[:65000],
@@ -229,7 +240,13 @@ def _ingest(payload, config):
     #         falls back to the Tier 1 Claude classifier.
     # Media -> _classify_media (triggered later by record_media).
     # Anything else (location/contacts) -> immediate flat alert.
-    if msg_type == "text" and (body or "").strip():
+    if from_me:
+        # Stored, but not classified and not alerted. Telling Tanuj about a
+        # message Tanuj just sent is noise, and every text otherwise costs a
+        # Claude call. Capture was the ask; the pipeline was not. Flip this if
+        # his own messages ever need to drive something.
+        alert = {"sent": False, "reason": "own_message"}
+    elif msg_type == "text" and (body or "").strip():
         from vcl_messaging.vcl_messaging import allocator
         rule = allocator.allocate(body, payload.get("group_name"))
         if rule.get("matched"):
