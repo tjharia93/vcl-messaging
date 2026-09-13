@@ -25,7 +25,7 @@ FIELDS = [
     "name", "conversation", "sent_at", "sender_name", "direction", "message_type",
     "content", "media_url", "ai_category", "ai_priority", "ai_summary", "ai_kind",
     "ai_customer_mentions", "human_category", "human_priority", "human_confirmed",
-    "human_reviewed_by", "human_reviewed_at",
+    "human_reviewed_by", "human_reviewed_at", "human_note", "inbox_ignored",
 ]
 
 
@@ -35,14 +35,20 @@ def _guard():
 
 
 @frappe.whitelist()
-def list_for_review(days=7, category=None, only_unreviewed=0, limit=200):
+def list_for_review(days=7, category=None, only_unreviewed=0, limit=200, show_hidden=0):
     """Recent messages with both verdicts, newest first.
 
     ``category`` filters on the EFFECTIVE category (human where set, else ai),
     so a corrected row moves bucket the way the reviewer expects it to.
+
+    Hidden messages are excluded unless ``show_hidden``. Hiding is a flag, not a
+    delete — the classifier's verdict on a message a human threw out is exactly
+    the data the accuracy measurement needs, so the row has to survive.
     """
     _guard()
     filters = [["sent_at", ">=", frappe.utils.add_days(frappe.utils.nowdate(), -int(days))]]
+    if not int(show_hidden or 0):
+        filters.append(["inbox_ignored", "=", 0])
     if int(only_unreviewed or 0):
         filters.append(["human_confirmed", "=", 0])
         filters.append(["human_category", "in", [None, ""]])
@@ -73,7 +79,7 @@ def list_for_review(days=7, category=None, only_unreviewed=0, limit=200):
 
 
 @frappe.whitelist(methods=["POST"])
-def set_review(message, category=None, priority=None, confirmed=None):
+def set_review(message, category=None, priority=None, confirmed=None, note=None, hidden=None):
     """Record a human verdict on one message.
 
     Passing a category/priority EQUAL to the classifier's clears the correction
@@ -101,6 +107,14 @@ def set_review(message, category=None, priority=None, confirmed=None):
 
     if confirmed is not None:
         vals["human_confirmed"] = 1 if str(confirmed) in ("1", "true", "True", "yes") else 0
+
+    if note is not None:
+        vals["human_note"] = (note or "").strip()[:1000]
+
+    if hidden is not None:
+        # A flag, never a delete. The message stays, so the classifier's verdict
+        # on it still counts toward accuracy; it just leaves the review list.
+        vals["inbox_ignored"] = 1 if str(hidden) in ("1", "true", "True", "yes") else 0
 
     if not vals:
         return {"ok": True, "unchanged": True}

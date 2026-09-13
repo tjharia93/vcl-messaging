@@ -39,7 +39,8 @@
   "col_break_review",
   "human_priority",
   "human_reviewed_by",
-  "human_reviewed_at"
+  "human_reviewed_at",
+  "human_note"
  ],
  "fields": [
   {
@@ -252,6 +253,12 @@
    "fieldtype": "Datetime",
    "label": "Reviewed On",
    "read_only": 1
+  },
+  {
+   "fieldname": "human_note",
+   "fieldtype": "Small Text",
+   "label": "Reviewer Note",
+   "description": "A note typed by whoever reviewed this message. Free text; nothing reads it automatically."
   }
  ],
  "index_web_pages_for_search": 0,
