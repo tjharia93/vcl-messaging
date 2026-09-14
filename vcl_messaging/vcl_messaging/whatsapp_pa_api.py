@@ -71,11 +71,47 @@ def _stream_for_category(category):
     return STREAM_LABELS.get((category or "other").lower(), "Inbox Review")
 
 
-PAYMENT_MEDIA_KINDS = {"cheque", "bank_advice", "bank_voucher", "pi", "ci"}
+# A document is not money.
+#
+# A cheque, a bank advice and a deposit voucher are cash arriving. A proforma,
+# a commercial invoice and a customer LPO are paperwork ABOUT money that has not
+# moved. Until 2026-09-14 both groups were filed as "payment", which put customer
+# purchase orders into the payments queue and raised Payment Entry follow-ups
+# against invoices nobody had paid. MSG-01306 is the case that showed it: Claude
+# Vision read Gilanis Supermarket's purchase order for 1,000 ETR thermal rolls
+# correctly, and the row still came out HIGH / payment.
+MONEY_IN_MEDIA_KINDS = {"cheque", "bank_advice", "bank_voucher"}
+
+# Paperwork, mapped to what it actually is. `pi` is ambiguous by nature — a
+# proforma reaches VCL from a supplier far more often than it leaves — so it
+# routes to Procurement for a human to look at rather than to a payment.
+DOCUMENT_MEDIA_CATEGORIES = {
+    "lpo": "sales_order",            # a customer ordering FROM VCL
+    "purchase_order": "sales_order",
+    "pi": "supplier_update",
+    "ci": "supplier_update",
+    "bl": "supplier_update",
+}
+
+# Priority a media kind earns on its own. A customer order matters as much as a
+# cheque; an invoice is worth reading today but is not an interruption.
+MEDIA_KIND_PRIORITY = {
+    "cheque": "HIGH", "bank_advice": "HIGH", "bank_voucher": "HIGH",
+    "lpo": "HIGH", "purchase_order": "HIGH",
+    "pi": "MED", "ci": "MED", "bl": "MED",
+}
+
+
+def _is_money_in(kind):
+    """True only when the document IS cash arriving, not paperwork about cash."""
+    return (kind or "").lower() in MONEY_IN_MEDIA_KINDS
 
 
 def _category_for_kind(kind):
-    return "payment" if (kind or "").lower() in PAYMENT_MEDIA_KINDS else "other"
+    kind = (kind or "").lower()
+    if _is_money_in(kind):
+        return "payment"
+    return DOCUMENT_MEDIA_CATEGORIES.get(kind, "other")
 
 
 def _route_line(category=None, kind=None):
@@ -582,26 +618,32 @@ def _classify_media(message_name, config_name):
     v = _ask_claude_vision(b64, mime, group_name, msg.sender_name, api_key)
     summary = v.get("summary")
     kind = v.get("kind") or "other"
-    is_payment = kind in {"cheque", "bank_advice", "bank_voucher", "pi", "ci"}
+    is_money_in = _is_money_in(kind)
+    category = _category_for_kind(kind)
 
     fields = {
         "ai_summary": (summary or "")[:500],
         "ai_kind": kind[:60],
         "ai_processed_at": now_datetime(),
     }
-    if is_payment:
-        fields["ai_category"] = "payment"
-        fields["ai_priority"] = "HIGH"
-        if v.get("payer"):
-            fields["ai_customer_mentions"] = json.dumps([v["payer"]])
+    if category != "other":
+        fields["ai_category"] = category
+        fields["ai_priority"] = MEDIA_KIND_PRIORITY.get(kind, "MED")
+        # Vision returns `payer` on money-in and `counterparty` on paperwork.
+        # Either way it is the company the row is about, and the inbox needs it.
+        who = v.get("payer") if is_money_in else v.get("counterparty")
+        if who:
+            fields["ai_customer_mentions"] = json.dumps([who])
     frappe.db.set_value("VCL Message", message_name, fields)
     frappe.db.commit()
 
     config = frappe.get_doc("VCL Channel Config", config_name)
 
     # Cheque / bank advice — money coming IN. Auto-create a payment follow-up
-    # against the payer Claude read off the document.
-    if is_payment and v.get("payer"):
+    # against the payer Claude read off the document. Paperwork is handled
+    # below: an invoice or an LPO must never raise a Payment Entry, because no
+    # money has moved and the entry would be against nothing.
+    if is_money_in and v.get("payer"):
         customer = _match_customer_name(v.get("payer"))
         amt = v.get("amount")
         bits = [f"Raise the Payment Entry — {kind.replace('_', ' ')} from {v['payer']}"]
@@ -623,6 +665,34 @@ def _classify_media(message_name, config_name):
             )
         except Exception as e:
             frappe.log_error(title="VCL vision: auto follow-up failed",
+                             message=f"{message_name}: {e}")
+
+    # Paperwork — a customer LPO, a proforma, an invoice. Worth a follow-up of
+    # the matching type so it does not vanish, and never a Payment Entry.
+    elif category in CATEGORY_TO_FUTYPE and not frappe.db.exists(
+        "VCL Followup", {"message": message_name}
+    ):
+        who = v.get("counterparty") or v.get("payer")
+        futype = _futype_for_category(category)
+        verb = {"Sales Order": "Raise the Sales Order",
+                "Purchase Order": "Place the Purchase Order / LPO"}.get(futype, "Follow up")
+        action = f"{verb} — {kind.replace('_', ' ')}"
+        if who:
+            action += f" from {who}"
+        if summary:
+            action += f". {summary}"
+        try:
+            from vcl_messaging.vcl_messaging import followups_api
+            followups_api.create_followup(
+                message=message_name,
+                action=action[:500],
+                due_date=_due_in_working_days(2),
+                followup_type=futype, status="Pending",
+                customer=_match_customer_name(who),
+                customer_text=(None if _match_customer_name(who) else who),
+            )
+        except Exception as e:
+            frappe.log_error(title="VCL vision: document follow-up failed",
                              message=f"{message_name}: {e}")
 
     _send_vision_alert(msg, conv, summary, kind, config)
@@ -648,6 +718,11 @@ def _ask_claude_vision(b64, mime, group_name, sender_name, api_key):
         f"  cheque          — a bank cheque\n"
         f"  bank_advice     — a bank transfer / Pesalink / RTGS / SWIFT advice or slip\n"
         f"  bank_voucher    — a bank deposit / transaction voucher\n"
+        f"  lpo             — a purchase order / LPO a CUSTOMER has raised ON "
+        f"Vimit Converters. Look for 'Purchase Order', 'LPO', 'Local Purchase "
+        f"Order', an order number, and Vimit Converters named as the SUPPLIER "
+        f"or vendor. This is an order to us, not a bill.\n"
+        f"  purchase_order  — an order VCL is placing on a supplier\n"
         f"  pi              — proforma invoice\n"
         f"  ci              — commercial invoice\n"
         f"  bl              — bill of lading\n"
@@ -665,9 +740,17 @@ def _ask_claude_vision(b64, mime, group_name, sender_name, api_key):
         f"  amount — the figure amount, digits only, no commas.\n"
         f"  ref    — the cheque number or transaction reference.\n"
         f"  bank   — the bank name.\n\n"
-        f"Reply STRICTLY as JSON. Payment document:\n"
+        f"Only those three kinds are money. An invoice, a proforma and an LPO "
+        f"are paperwork about money that has NOT moved — never report a payer "
+        f"or an amount for them.\n\n"
+        f"If it is an lpo, purchase_order, pi, ci or bl, extract instead:\n"
+        f"  counterparty — the OTHER company on the document, never 'Vimit "
+        f"Converters'. On a customer LPO this is the customer who raised it; on "
+        f"a supplier invoice it is the supplier. Use the name as printed.\n\n"
+        f"Reply STRICTLY as JSON. Money received:\n"
         f"{{\"summary\":\"...\",\"kind\":\"cheque\",\"payer\":\"...\","
         f"\"amount\":114114,\"ref\":\"...\",\"bank\":\"...\"}}\n"
+        f"Paperwork: {{\"summary\":\"...\",\"kind\":\"lpo\",\"counterparty\":\"...\"}}\n"
         f"Anything else: {{\"summary\":\"...\",\"kind\":\"...\"}}"
     )
 
@@ -711,10 +794,18 @@ def _ask_claude_vision(b64, mime, group_name, sender_name, api_key):
         amt = float(str(amt).replace(",", "").strip()) if amt not in (None, "") else None
     except (ValueError, TypeError):
         amt = None
+    kind = str(parsed.get("kind", "other")).lower().strip()
+    # A payer on paperwork is Claude guessing at who would eventually pay. It is
+    # not a receipt, and letting it through is what raised Payment Entries
+    # against invoices. Money-in kinds only.
+    payer = (parsed.get("payer") or "").strip() or None
+    if not _is_money_in(kind):
+        payer, amt = None, None
     return {
         "summary": parsed.get("summary", text[:200]),
-        "kind": parsed.get("kind", "other"),
-        "payer": (parsed.get("payer") or "").strip() or None,
+        "kind": kind or "other",
+        "payer": payer,
+        "counterparty": (parsed.get("counterparty") or "").strip() or None,
         "amount": amt,
         "ref": (parsed.get("ref") or "").strip() or None,
         "bank": (parsed.get("bank") or "").strip() or None,
@@ -864,12 +955,21 @@ def _autocreate_followup_from_verdict(message_name, verdict):
 
 
 def _recent_context(msg, n=3):
-    """Last n messages in the same conversation before this one — gives Claude
-    a little thread context. Returns a plain string block."""
+    """Last n messages in the same conversation before this one.
+
+    This is not decoration. On the floor a payment arrives as two messages from
+    the same person seconds apart — the M-Pesa or Pesalink text, then a single
+    word naming the customer it belongs to ("Penstat", "Goldtex", "bhavinn").
+    Read alone the second one is meaningless and was being filed as personal
+    chatter, which meant every payment we captured was unattributed. So each
+    line carries who sent it, how long before this message, and what the
+    classifier already decided about it.
+    """
     rows = frappe.get_all(
         "VCL Message",
         filters={"conversation": msg.conversation, "creation": ["<", msg.creation]},
-        fields=["sender_name", "message_type", "content"],
+        fields=["sender_name", "message_type", "content", "creation",
+                "ai_category", "ai_summary"],
         order_by="creation desc",
         limit=n,
     )
@@ -877,7 +977,16 @@ def _recent_context(msg, n=3):
     lines = []
     for r in rows:
         snippet = (r.content or f"[{r.message_type}]")[:160]
-        lines.append(f"{r.sender_name}: {snippet}")
+        try:
+            gap = int((msg.creation - r.creation).total_seconds())
+            when = f"{gap}s earlier" if gap < 300 else f"{gap // 60}m earlier"
+        except Exception:
+            when = "earlier"
+        tag = f" [classified: {r.ai_category}]" if r.ai_category else ""
+        same = " SAME SENDER" if r.sender_name == msg.sender_name else ""
+        lines.append(f"{r.sender_name} ({when}{same}){tag}: {snippet}")
+        if r.ai_category == "payment" and r.ai_summary:
+            lines.append(f"    ^ that payment: {r.ai_summary[:160]}")
     return "\n".join(lines) or "(no earlier messages)"
 
 
@@ -888,7 +997,7 @@ def _ask_claude_text(body, group_name, sender_name, context, api_key):
         "Kenyan paper-converting company. You are reading one inbound WhatsApp "
         f"message from the group \"{group_name}\".\n\n"
         f"Sender: {sender_name}\n"
-        "Recent context (older messages in this group, reference only):\n"
+        "Recent context — the messages immediately before this one:\n"
         f"{context}\n\n"
         "THE MESSAGE TO CLASSIFY:\n"
         f"{body}\n\n"
@@ -903,8 +1012,27 @@ def _ask_claude_text(body, group_name, sender_name, context, api_key):
         '  "action_items": ["concrete next actions implied, if any"],\n'
         '  "mentions_tanuj": true | false\n'
         "}\n\n"
+        "CONTINUATION — read this before anything else.\n"
+        "People here send a payment in two messages. First the M-Pesa text, the "
+        "Pesalink advice or the screenshot. Then, seconds later and from the "
+        "SAME sender, a fragment naming the customer or account the money "
+        "belongs to: \"Penstat\", \"Goldtex\", \"Leeisnet\", \"^ bhavinn\", "
+        "\"Orioncraft\". That fragment is not chatter. It is the most useful "
+        "part of the pair, because the payment message itself rarely names the "
+        "customer.\n"
+        "So: if the message to classify is SHORT and mostly a name or reference, "
+        "and the context shows a payment from the SAME SENDER within the last "
+        "few minutes, then classify it as payment, give it the same priority as "
+        "that payment, put the name in customer_mentions, and write a summary "
+        "that joins the two — e.g. \"Penstat is the customer for the KES 42,750 "
+        "M-Pesa received 13/9\". Do the same for a fragment following a "
+        "purchase_order or sales_order.\n"
+        "Only apply this when the fragment plausibly IS a name or reference. "
+        "\"Noted\", \"ok\", \"thanks\", \"sawa\" are acknowledgements and stay "
+        "personal however recent the payment.\n\n"
         "Category guidance — the group a message is in does NOT decide its "
-        "category; judge each message on its own content. One exception, and it "
+        "category; judge each message on its own content, with the continuation "
+        "rule above as the one deliberate exception. Another exception, and it "
         "is about INTENT rather than subject: the same order is often posted "
         "twice — once as a commercial fact ('customer X has ordered N cartons') "
         "and once as an instruction to the floor ('this order is in, get ready "
